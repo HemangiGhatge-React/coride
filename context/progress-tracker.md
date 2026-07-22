@@ -4,16 +4,14 @@ Update this file after every meaningful implementation change.
 
 ## Current Phase
 
-- Not started — backend Day 0. Schema not yet written or migrated. Web frontend has a placeholder page and design system dependencies installed.
-
-## Current Goal
-
-- Write and migrate the Prisma schema against a live Postgres instance (Neon), verified via Prisma Studio. Then: auth, ride CRUD, concurrency-safe booking module. (Target: Jul 26 — unchanged, but now compressed by however many days schema work takes.)
+- Backend Day 1 complete — schema written, migrated to live Neon Postgres, constraints verified (Booking unique index confirmed via migration.sql, not just schema inspection).
 
 ## Completed
 
 - Web: placeholder page displaying project name.
 - Web: shadcn/ui components installed (Button, Card, Dialog, Input, Tabs, Textarea, ScrollArea), lucide-react installed, lib/utils.cn helper created.
+- Monorepo restructure: web app moved to apps/web, root workspace package.json added, apps/api scaffolded (NestJS), npm workspace hoisting verified.
+- Prisma schema (User, Vehicle, Ride, Booking) written and migrated against Neon (direct, non-pooled connection). ADMIN/DRIVER role added. Booking unique constraint on (rideId, riderId) verified present in actual migration SQL.
 
 ## In Progress
 
@@ -21,12 +19,12 @@ Update this file after every meaningful implementation change.
 
 ## Next Up
 
-- Write Prisma schema (User, Ride, Vehicle, Booking) per `architecture.md`.
-- Migrate against live Postgres (Neon) — `npx prisma migrate dev --name init`.
-- Verify via Prisma Studio before writing any endpoint code.
 - Auth module: register/login endpoints, bcrypt password hashing, JWT issue + verify guard.
-- Then: ride CRUD endpoints.
-- Then: booking module with row-level-locked transaction for seat allocation (flagship concurrency-safety piece — see `architecture.md` invariant #1).
+
+Apply that, commit it separately or as part of the same commit — your call, but don't leave it unsaved between now and tomorrow's session.
+
+Before you close today out: the Jul 26 backend deadline now has auth, ride CRUD, and the booking module left — three pieces in what's likely 3-4 remaining days depending on when you actually start tomorrow. That's tighter than the "6 days for three pieces" estimate from earlier, because today ate into it more than a clean Day 1 would have (path confusion, Prisma 7 breaking change, monorepo move). Worth being honest with yourself about that compression now rather than discovering it on Jul 25.
+
 
 ## Open Questions
 
