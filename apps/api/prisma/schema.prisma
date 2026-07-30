@@ -47,6 +47,7 @@ model Ride {
   departureTime  DateTime
   seatsTotal     Int
   seatsAvailable Int
+  totalFuelCost  Decimal    @db.Decimal(10, 2)
   costPerSeat    Decimal    @db.Decimal(10, 2)
   status         RideStatus @default(ACTIVE)
   createdAt      DateTime   @default(now())
