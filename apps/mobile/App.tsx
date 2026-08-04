@@ -1,13 +1,13 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import SplashScreen from './src/screens/SplashScreen/splashScreen';
+import SplashScreen from './src/screens/SplashScreen';
 import OnboardingOne from './src/screens/OnboardingOne';
 import OnboardingTwo from './src/screens/OnboardingTwo';
-import AuthScreen from './src/screens/AuthScreen';
-import HomeScreen from './src/screens/HomeScreen';
-import RideDetailScreen from './src/screens/RideDetailScreen';
-import PostRideScreen from './src/screens/PostRideScreen';
-import TripsScreen from './src/screens/TripsScreen';
+// import AuthScreen from './src/screens/AuthScreen';
+// import HomeScreen from './src/screens/HomeScreen';
+// import RideDetailScreen from './src/screens/RideDetailScreen';
+// import PostRideScreen from './src/screens/PostRideScreen';
+// import TripsScreen from './src/screens/TripsScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -29,11 +29,11 @@ export default function App() {
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="OnboardingOne" component={OnboardingOne} />
         <Stack.Screen name="OnboardingTwo" component={OnboardingTwo} />
-        <Stack.Screen name="Auth" component={AuthScreen} />
+        {/* <Stack.Screen name="Auth" component={AuthScreen} />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="RideDetail" component={RideDetailScreen} />
         <Stack.Screen name="PostRide" component={PostRideScreen} />
-        <Stack.Screen name="Trips" component={TripsScreen} />
+        <Stack.Screen name="Trips" component={TripsScreen} /> */}
       </Stack.Navigator>
     </NavigationContainer>
   );
