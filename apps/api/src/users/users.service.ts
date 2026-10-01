@@ -1,6 +1,12 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
+
+export interface VippsIdentity {
+  sub: string;
+  email: string;
+  emailVerified: boolean;
+  name: string;
+}
 
 @Injectable()
 export class UsersService {
@@ -25,6 +31,40 @@ export class UsersService {
         password: data.password, // already hashed by caller — see auth.service.ts
         name: data.name,
         role: 'DRIVER', // hardcoded — no self-service ADMIN, no RIDER role (decided Jul 22)
+      },
+    });
+  }
+
+  /**
+   * Resolve a Vipps identity to a local user:
+   * 1. Known vippsSub → that user.
+   * 2. Existing account with the same email → link it, but only if Vipps says the
+   *    email is verified (otherwise anyone could claim an account by email).
+   * 3. Otherwise create a new passwordless DRIVER account.
+   */
+  async findOrCreateFromVipps(identity: VippsIdentity) {
+    const bySub = await this.prisma.user.findUnique({
+      where: { vippsSub: identity.sub },
+    });
+    if (bySub) return bySub;
+
+    const byEmail = await this.findByEmail(identity.email);
+    if (byEmail) {
+      if (!identity.emailVerified || byEmail.vippsSub) {
+        throw new ConflictException('EMAIL_ALREADY_REGISTERED');
+      }
+      return this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: { vippsSub: identity.sub },
+      });
+    }
+
+    return this.prisma.user.create({
+      data: {
+        email: identity.email,
+        vippsSub: identity.sub,
+        name: identity.name,
+        role: 'DRIVER',
       },
     });
   }

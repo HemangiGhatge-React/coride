@@ -1,0 +1,29 @@
+# Render Blueprint for the API. Run from the repo root so the root
+# package-lock.json (npm workspaces) is used.
+services:
+  - type: web
+    name: coride-api
+    runtime: node
+    rootDir: .
+    buildCommand: npm ci --workspace apps/api && npm run build --workspace apps/api
+    # Applies pending Prisma migrations before each release.
+    preDeployCommand: npm exec --workspace apps/api -- prisma migrate deploy
+    startCommand: npm run start:prod --workspace apps/api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.17.0"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: VIPPS_CLIENT_ID
+        sync: false
+      - key: VIPPS_CLIENT_SECRET
+        sync: false
+      - key: VIPPS_MERCHANT_SERIAL_NUMBER
+        sync: false
+      - key: VIPPS_REDIRECT_URI
+        sync: false
+      - key: VIPPS_APP_REDIRECT_URIS
+        sync: false

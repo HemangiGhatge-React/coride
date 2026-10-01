@@ -9,4 +9,10 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  // Liveness check for Render; deliberately doesn't touch the database.
+  @Get('health')
+  health() {
+    return { status: 'ok' };
+  }
 }
