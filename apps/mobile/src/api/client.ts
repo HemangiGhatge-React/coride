@@ -62,7 +62,10 @@ async function send(path: string, init: RequestInit, token: string | null): Prom
 
 async function toApiError(res: Response): Promise<ApiError> {
   const body = await res.json().catch(() => null);
-  const message = typeof body?.message === 'string' ? body.message : `Request failed (${res.status})`;
+  // Nest's ValidationPipe returns `message` as an array of field errors.
+  const raw = body?.message;
+  const message =
+    typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.join('\n') : `Request failed (${res.status})`;
   return new ApiError(res.status, message);
 }
 

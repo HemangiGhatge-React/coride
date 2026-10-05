@@ -1,7 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { apiFetch, publicFetch, setSessionExpiredHandler, NetworkError, SessionExpiredError } from '../api/client';
+import {
+  apiFetch,
+  publicFetch,
+  setSessionExpiredHandler,
+  ApiError,
+  NetworkError,
+  SessionExpiredError,
+} from '../api/client';
 import { clearSession, getRefreshToken, saveSession } from '../utils/authStorage';
-import { loginWithVipps, type AuthUser, type VippsLoginResult } from './vippsLogin';
+import type { AuthUser, LoginSession } from './types';
 
 export type AuthState =
   | { status: 'loading' }
@@ -10,15 +17,22 @@ export type AuthState =
   // user is null when we have a stored session but couldn't reach the backend on launch.
   | { status: 'signedIn'; user: AuthUser | null };
 
+/** Outcome of a login/signup attempt; `message` is ready to show to the user. */
+export type AuthResult = { ok: true } | { ok: false; message: string };
+
 interface AuthContextValue {
   state: AuthState;
-  signInWithVipps: () => Promise<VippsLoginResult>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   /** Re-fetch the current user, e.g. after launching offline. */
   reloadUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+const NETWORK_MESSAGE = "Can't reach CoRide. Check your internet connection and try again.";
+const UNKNOWN_MESSAGE = 'Something went wrong. Please try again.';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'loading' });
@@ -56,15 +70,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [reloadUser]);
 
-  const signInWithVipps = useCallback(async () => {
-    const result = await loginWithVipps();
-    if (result.type === 'success') {
-      const { user, ...tokens } = result.session;
+  const signIn = useCallback(async (email: string, password: string): Promise<AuthResult> => {
+    try {
+      const { user, ...tokens } = await publicFetch<LoginSession>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
       await saveSession(tokens);
       setState({ status: 'signedIn', user });
+      return { ok: true };
+    } catch (err) {
+      if (err instanceof NetworkError) return { ok: false, message: NETWORK_MESSAGE };
+      if (err instanceof ApiError && err.status === 401) {
+        return { ok: false, message: 'Wrong email or password.' };
+      }
+      if (err instanceof ApiError && err.status === 400) return { ok: false, message: err.message };
+      return { ok: false, message: UNKNOWN_MESSAGE };
     }
-    return result;
   }, []);
+
+  const signUp = useCallback(
+    async (name: string, email: string, password: string): Promise<AuthResult> => {
+      try {
+        // /auth/register creates the account but returns no tokens; log in right after.
+        await publicFetch('/auth/register', {
+          method: 'POST',
+          body: JSON.stringify({ name, email, password }),
+        });
+      } catch (err) {
+        if (err instanceof NetworkError) return { ok: false, message: NETWORK_MESSAGE };
+        if (err instanceof ApiError && err.status === 409) {
+          return { ok: false, message: 'An account with this email already exists. Log in instead.' };
+        }
+        if (err instanceof ApiError && err.status === 400) return { ok: false, message: err.message };
+        return { ok: false, message: UNKNOWN_MESSAGE };
+      }
+      return signIn(email, password);
+    },
+    [signIn],
+  );
 
   const signOut = useCallback(async () => {
     const refreshToken = await getRefreshToken();
@@ -80,8 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ state, signInWithVipps, signOut, reloadUser }),
-    [state, signInWithVipps, signOut, reloadUser],
+    () => ({ state, signIn, signUp, signOut, reloadUser }),
+    [state, signIn, signUp, signOut, reloadUser],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

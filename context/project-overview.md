@@ -23,7 +23,7 @@ CoRide is a carpooling app for Norwegian recreational travel — cabin trips, sk
 
 ### Core (mobile)
 
-- Auth: log in with Vipps (Vipps Login / OIDC); backend issues its own access + refresh tokens, stored via Expo SecureStore and silently refreshed
+- Auth: register/login with email + password; backend issues its own access + refresh tokens, stored via Expo SecureStore and silently refreshed. (Vipps Login is implemented but dormant — designed, not deployed, because it requires a registered business.)
 - Ride creation, listing, and detail view
 - Booking creation with race-condition-safe seat allocation
 - Booking status shown to the user, with graceful handling if a seat is lost to a concurrent booking
@@ -37,7 +37,7 @@ CoRide is a carpooling app for Norwegian recreational travel — cabin trips, sk
 
 ### Deferred / mocked
 
-- Payment: `paymentStatus` is a mocked enum (`MOCK_UNPAID` / `MOCK_PAID`). No real Vipps payment integration in this build (Vipps is used for login only).
+- Payment: `paymentStatus` is a mocked enum (`MOCK_UNPAID` / `MOCK_PAID`). No real Vipps payment integration in this build, and no payment capture in the booking flow.
 - Facebook Page/Messenger ride-request capture: explicitly out of scope for this build (was considered, cut to keep timeline realistic).
 
 ## Scope

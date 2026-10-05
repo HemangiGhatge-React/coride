@@ -4,6 +4,7 @@ import SplashScreen from './src/screens/SplashScreen';
 import OnboardingOne from './src/screens/OnboardingOne';
 import OnboardingTwo from './src/screens/OnboardingTwo';
 import Login from './src/screens/Login';
+import Signup from './src/screens/Signup';
 import Home from './src/screens/Home';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 // import RideDetailScreen from './src/screens/RideDetailScreen';
@@ -15,6 +16,7 @@ export type RootStackParamList = {
   OnboardingOne: undefined;
   OnboardingTwo: undefined;
   Auth: undefined;
+  Signup: undefined;
   Home: undefined;
   RideDetail: { rideId: string };
   PostRide: undefined;
@@ -52,6 +54,7 @@ function RootNavigator() {
       <Stack.Screen name="OnboardingOne" component={OnboardingOne} />
       <Stack.Screen name="OnboardingTwo" component={OnboardingTwo} />
       <Stack.Screen name="Auth" component={Login} />
+      <Stack.Screen name="Signup" component={Signup} />
     </Stack.Navigator>
   );
 }

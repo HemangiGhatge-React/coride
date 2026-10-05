@@ -1,28 +1,17 @@
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../App';
 import { useAuth } from '../auth/AuthContext';
-import type { VippsLoginErrorCode, VippsLoginResult } from '../auth/vippsLogin';
+import { styles } from './authFormStyles';
 
+type Props = NativeStackScreenProps<RootStackParamList, 'Auth'>;
 type Notice = { tone: 'info' | 'error'; text: string };
 
-const CANCELLED: Notice = { tone: 'info', text: 'Vipps login was cancelled. Tap the button to try again.' };
-const UNKNOWN_ERROR: Notice = { tone: 'error', text: 'Something went wrong. Please try again.' };
-const ERROR_TEXT: Record<VippsLoginErrorCode, string> = {
-  vipps_error: "Vipps couldn't complete the login. Please try again.",
-  email_conflict: 'The email on your Vipps profile already belongs to another CoRide account.',
-  expired: 'The login took too long and expired. Please try again.',
-  network: "Can't reach CoRide. Check your internet connection and try again.",
-  not_configured: "Vipps login isn't available right now.",
-};
-
-function noticeFor(result: VippsLoginResult): Notice | null {
-  if (result.type === 'success') return null;
-  if (result.type === 'cancelled') return CANCELLED;
-  return { tone: 'error', text: ERROR_TEXT[result.code] };
-}
-
-export default function Login() {
-  const { state, signInWithVipps } = useAuth();
+export default function Login({ navigation }: Props) {
+  const { state, signIn } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(
     state.status === 'signedOut' && state.reason === 'expired'
@@ -30,22 +19,23 @@ export default function Login() {
       : null,
   );
 
-  const onPress = async () => {
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
+
+  const onSubmit = async () => {
+    if (!canSubmit) return;
     setBusy(true);
     setNotice(null);
-    try {
-      setNotice(noticeFor(await signInWithVipps()));
-    } catch {
-      setNotice(UNKNOWN_ERROR);
-    } finally {
-      setBusy(false);
-    }
+    // Email is trimmed but not lowercased: lookups are exact, and existing accounts
+    // may have been registered with mixed case.
+    const result = await signIn(email.trim(), password);
+    if (!result.ok) setNotice({ tone: 'error', text: result.message });
+    setBusy(false);
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Welcome to CoRide</Text>
-      <Text style={styles.subheading}>Log in with Vipps to find and share rides.</Text>
+      <Text style={styles.heading}>Welcome back</Text>
+      <Text style={styles.subheading}>Log in to find and share rides.</Text>
 
       {notice && (
         <View style={[styles.notice, notice.tone === 'error' ? styles.noticeError : styles.noticeInfo]}>
@@ -53,28 +43,41 @@ export default function Login() {
         </View>
       )}
 
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        autoComplete="email"
+        keyboardType="email-address"
+        textContentType="emailAddress"
+        editable={!busy}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        autoComplete="current-password"
+        textContentType="password"
+        editable={!busy}
+        onSubmitEditing={onSubmit}
+      />
+
       <TouchableOpacity
-        style={[styles.vippsButton, busy && styles.vippsButtonBusy]}
-        onPress={onPress}
-        disabled={busy}
+        style={[styles.primaryButton, !canSubmit && styles.buttonDisabled]}
+        onPress={onSubmit}
+        disabled={!canSubmit}
         accessibilityRole="button"
-        accessibilityLabel="Log in with Vipps"
       >
-        {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.vippsButtonText}>Log in with Vipps</Text>}
+        {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Log in</Text>}
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.linkButton} onPress={() => navigation.navigate('Signup')} disabled={busy}>
+        <Text style={styles.linkText}>New to CoRide? Create an account</Text>
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAF9', paddingHorizontal: 28, paddingTop: 120 },
-  heading: { fontSize: 28, fontWeight: '700', color: '#111827', marginBottom: 12 },
-  subheading: { fontSize: 15, color: '#6B7280', lineHeight: 22, marginBottom: 32 },
-  notice: { borderRadius: 12, padding: 14, marginBottom: 24 },
-  noticeInfo: { backgroundColor: '#ECFDF5' },
-  noticeError: { backgroundColor: '#FEF2F2' },
-  noticeText: { fontSize: 14, color: '#111827', lineHeight: 20 },
-  vippsButton: { backgroundColor: '#FF5B24', paddingVertical: 16, borderRadius: 14, alignItems: 'center', marginTop: 'auto', marginBottom: 40 },
-  vippsButtonBusy: { opacity: 0.7 },
-  vippsButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-});

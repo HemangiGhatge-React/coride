@@ -3,16 +3,13 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { API_URL } from '../config';
 import { ApiError, NetworkError, publicFetch } from '../api/client';
-import type { StoredSession } from '../utils/authStorage';
+import type { LoginSession } from './types';
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-}
-
-export type LoginSession = StoredSession & { user: AuthUser };
+// DORMANT: Vipps Login is designed and implemented (backend: src/auth/vipps/)
+// but not wired into the app, because Vipps Login requires a registered
+// business (merchant agreement) to get credentials. The active login is
+// email/password in AuthContext. To enable: call loginWithVipps() from a
+// screen, save result.session via saveSession, and set the VIPPS_* env vars.
 
 export type VippsLoginErrorCode =
   | 'vipps_error' // Vipps rejected the login or the backend couldn't verify it
