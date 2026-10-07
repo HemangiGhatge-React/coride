@@ -6,7 +6,7 @@ CoRide is a carpooling app for Norwegian recreational travel — cabin trips, sk
 
 ## Goals
 
-1. Ship a working, deployed, end-to-end system (backend + mobile + web) by Aug 13, 2026 — this is a portfolio/interview project on a hard deadline, not a commercial launch.
+1. Ship a working, deployed, end-to-end system (backend + mobile + web) — this is a portfolio/interview project, not a commercial launch.
 2. Demonstrate correct handling of concurrent booking requests (the flagship technical story) — no double-booking of the last seat on a ride, even under simultaneous requests.
 3. Prove real cross-platform frontend ownership: one backend, a functional mobile client, and a functional web client, built solo.
 
@@ -33,7 +33,7 @@ CoRide is a carpooling app for Norwegian recreational travel — cabin trips, sk
 - Auth: login (reuses backend JWT auth)
 - Rides list (table view)
 - Ride detail view showing associated bookings
-- Booking approve/reject action — stretch goal only, included if ahead of schedule per the Aug 3 checkpoint; otherwise the dashboard stays read-only
+- Booking approve/reject action — stretch goal only, included if ahead of schedule; otherwise the dashboard stays read-only
 
 ### Deferred / mocked
 
@@ -63,4 +63,4 @@ CoRide is a carpooling app for Norwegian recreational travel — cabin trips, sk
 1. A user can register, create a ride, and book a ride from the mobile app against the live deployed backend.
 2. Two simultaneous booking requests for the last seat on a ride resolve correctly: exactly one succeeds, the other receives a clear `SEAT_NO_LONGER_AVAILABLE` response — verified with an actual concurrency test, not just code review.
 3. The web admin dashboard, deployed and live, shows real ride and booking data pulled from the same backend the mobile app uses.
-4. The whole system (backend + mobile + web) is deployed, documented (README with architecture diagram), and demoable via a recorded video by Aug 13, 2026.
+4. The whole system (backend + mobile + web) is deployed, documented (README with architecture diagram), and demoable via a recorded video.
