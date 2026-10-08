@@ -3,6 +3,24 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../prisma/prisma.service';
 import { RideStatus } from '@prisma/client';
 
+// Error body is a superset of Nest's default { statusCode, error, message } so clients
+// can rely on `code` for booking failures without losing the usual fields.
+function bookingError(Exc: typeof NotFoundException | typeof ConflictException, code: string, message: string) {
+    const e = new Exc();
+    return new Exc({ statusCode: e.getStatus(), error: e.name.replace('Exception', '').replace(/([a-z])([A-Z])/g, '$1 $2'), code, message });
+}
+
+// Names of the columns behind a P2002, or null when Prisma didn't report them.
+// Prisma 7 with the pg driver adapter may put them in meta.driverAdapterError instead of meta.target.
+function uniqueViolationColumns(err: any): string[] | null {
+    const target = err?.meta?.target;
+    if (Array.isArray(target)) return target.map(String);
+    if (typeof target === 'string') return [target];
+    const fields = err?.meta?.driverAdapterError?.cause?.constraint?.fields;
+    if (Array.isArray(fields)) return fields.map(String);
+    return null;
+}
+
 @Injectable()
 export class BookingsService {
     constructor(private prisma: PrismaService) { }
@@ -13,15 +31,15 @@ export class BookingsService {
                 // Lock the ride row for the duration of this transaction
                 const rides = await tx.$queryRaw<{ id: string; status: RideStatus; seatsAvailable: number; driverId: string }[]>`SELECT id, status, "seatsAvailable", "driverId" FROM "Ride" WHERE id = ${rideId} FOR UPDATE`;
                 const ride = rides[0];
-                if (!ride) throw new NotFoundException('Ride not found');
+                if (!ride) throw bookingError(NotFoundException, 'RIDE_NOT_FOUND', 'Ride not found');
                 if (riderId === ride.driverId) {
-                    throw new ConflictException('Drivers cannot book their own ride');
+                    throw bookingError(ConflictException, 'CANNOT_BOOK_OWN_RIDE', 'Drivers cannot book their own ride');
                 }
                 if (ride.status !== 'ACTIVE') {
-                    throw new ConflictException('Ride is not open for booking');
+                    throw bookingError(ConflictException, 'RIDE_NOT_ACTIVE', 'Ride is not open for booking');
                 }
                 if (ride.seatsAvailable < seatsBooked) {
-                    throw new ConflictException('Not enough seats available');
+                    throw bookingError(ConflictException, 'SEAT_NO_LONGER_AVAILABLE', 'Not enough seats available');
                 }
 
                 await tx.ride.update({
@@ -35,7 +53,12 @@ export class BookingsService {
             });
         } catch (err) {
             if (err.code === 'P2002') {
-                throw new ConflictException('You have already booked this ride');
+                // Booking has only one unique constraint, (rideId, riderId). If Prisma reports the
+                // violated columns, require both; if it reports none, assume it is that one.
+                const columns = uniqueViolationColumns(err);
+                if (!columns || (columns.includes('rideId') && columns.includes('riderId'))) {
+                    throw bookingError(ConflictException, 'ALREADY_BOOKED', 'You have already booked this ride');
+                }
             }
             throw err;
         }
