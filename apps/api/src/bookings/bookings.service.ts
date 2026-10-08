@@ -44,6 +44,11 @@ export class BookingsService {
                     throw bookingError(ConflictException, 'SEAT_NO_LONGER_AVAILABLE', 'Not enough seats available');
                 }
 
+                // Test hook: widens the window between the seat check and the decrement so
+                // concurrency tests can prove the lock closes it. Never active in production.
+                const testDelayMs = process.env.NODE_ENV === 'production' ? 0 : Number(process.env.BOOKING_TEST_DELAY_MS ?? 0);
+                if (testDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, testDelayMs));
+
                 await tx.ride.update({
                     where: { id: rideId },
                     data: { seatsAvailable: { decrement: seatsBooked } },

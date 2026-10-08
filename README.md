@@ -20,7 +20,7 @@ Payment is mocked (`MOCK_UNPAID` / `MOCK_PAID`). Detailed status: [context/progr
 
 ## Engineering decisions
 
-1. **Seat booking.** Booking runs in a transaction that locks the ride row with `SELECT ... FOR UPDATE`, plus a unique constraint on `(rideId, riderId)`. The concurrency test is in progress; this is not yet verified.
+1. **Seat booking.** Booking runs in a transaction that locks the ride row with `SELECT ... FOR UPDATE`, plus a unique constraint on `(rideId, riderId)` and `CHECK` constraints on `seatsAvailable`. A real-database concurrency test (10 simultaneous riders for 1 and 3 seats) passes; with the lock removed it fails. The `CHECK` migration is applied to the test database only so far.
 2. **Refresh tokens.** Stored hashed, rotated on every use, grouped in token families with reuse detection and a 30 s grace window. See [apps/api/src/auth/tokens.service.ts](apps/api/src/auth/tokens.service.ts).
 
 Vipps Login is designed against Vipps' documented Login API, not deployed. The code is in the repo but dormant, and it has never run against real credentials. Env vars `VIPPS_*` only apply if it is enabled.

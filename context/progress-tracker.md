@@ -6,7 +6,7 @@ Update this file after every meaningful implementation change.
 
 ## Current Phase
 
-- API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency is not yet tested.
+- API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch only.
 - Mobile: auth screens only (splash, onboarding, login, signup, placeholder Home).
 - Web: Next.js 16 scaffold with UI components, no features.
 
@@ -17,11 +17,18 @@ Update this file after every meaningful implementation change.
 - **Refresh tokens.** 15 min access JWT; opaque refresh tokens stored as SHA-256 hashes, rotated on every use, token families with reuse detection and a 30 s grace window (`src/auth/tokens.service.ts`). Covered by `tokens.service.spec.ts`.
 - **`JwtAuthGuard`** (`src/auth/jwt-auth.guard.ts`). The Oct 3 manual run called `GET /auth/me`, which goes through the guard (with a valid token it returned the user). Rides and vehicles routes using the same guard have no logged check of their own.
 - **Schema and migrations.** Migrations `init`, `add_fuel_cost_split`, `vipps_login_refresh_tokens` applied (checked Oct 3).
+- **Seat booking concurrency** (`POST /bookings`, `src/bookings/bookings.service.ts`), verified 2026-10-08 by `test/bookings.concurrency.e2e-spec.ts`. It runs against a dedicated Neon branch (`apps/api/.env.test`, not committed) with a real database and no Prisma mocks, through HTTP with the real guard and validation. Each case runs at `BOOKING_TEST_DELAY_MS` 0 and 200 (a test-only delay between the seat check and the decrement; ignored when `NODE_ENV=production`):
+  - A: 1 seat, 10 riders -> exactly 1 booking, 9 x 409 `SEAT_NO_LONGER_AVAILABLE`, `seatsAvailable` 0.
+  - B: 3 seats, 10 riders -> exactly 3 bookings, `seatsAvailable` 0.
+  - C: same rider x 5 -> 1 booking, 4 x 409 `ALREADY_BOOKED`, no 500s, `seatsAvailable` = total - 1.
+  - Negative control (not committed): with `FOR UPDATE` and the CHECKs removed, A and B at 200 ms fail with 10 bookings and `seatsAvailable` -9 / -7. With only `FOR UPDATE` removed and the CHECKs kept, the data stays correct (the losing transactions roll back) but clients get 500 instead of 409.
+  - Booking errors return `{ statusCode, error, code, message }`: `RIDE_NOT_FOUND` (404), `CANNOT_BOOK_OWN_RIDE`, `RIDE_NOT_ACTIVE`, `SEAT_NO_LONGER_AVAILABLE`, `ALREADY_BOOKED` (409).
+  - Run: `npx jest --config ./test/jest-e2e.json test/bookings.concurrency.e2e-spec.ts` in `apps/api`. The scaffold `test/app.e2e-spec.ts` is unrelated and does not pass.
 - **Passing specs without `DATABASE_URL`:** 3 suites, 16 tests (tokens, Vipps auth service, app controller).
 
 ## Done (not verified)
 
-- **Seat booking** (`POST /bookings`, `src/bookings/bookings.service.ts`). Inside an interactive `$transaction` it locks the ride row with `SELECT ... FOR UPDATE`, checks driver/status/seats, decrements `seatsAvailable` and inserts the booking. `@@unique([rideId, riderId])` exists; a duplicate returns 409. Running out of seats returns a plain 409 `"Not enough seats available"` (no structured error code yet). **Concurrency is NOT verified.** `src/bookings/test-concurrent-booking.js` fires 2 manual requests and only logs them: no assertions, no setup. There is no booking spec, no cancel endpoint, and no DB-level `CHECK (seatsAvailable >= 0)`.
+- **`CHECK` constraints on `Ride`** (migration `20261008104552_ride_seats_check`): `seatsAvailable >= 0` and `seatsAvailable <= seatsTotal`. Applied to the test branch only. Production needs `prisma migrate deploy`. Whether Render's `preDeployCommand` runs on the current plan is unconfirmed, so don't assume migrations run on deploy. The production `Ride` rows were checked by hand: none violate either constraint.
 - **Rides** (guard on create/update): create, list, get by id, update (owner only; cancelling is `PATCH` with `status`). No delete. `rides.service.spec.ts` and `rides.controller.spec.ts` exist but fail at import (see Open Questions).
 - **Vehicles** (guard on all routes): create, list own (`GET /vehicles/mine`). Same failing-spec situation.
 - **Vipps Login.** Code kept but dormant: backend `src/auth/vipps/*` (fails closed with no `VIPPS_*` env), mobile `src/auth/vippsLogin.ts` (not imported by any screen). Callback/exchange logic has unit tests, but it has never run against real credentials; those need a Norwegian organisation number.
@@ -33,7 +40,7 @@ Update this file after every meaningful implementation change.
 
 In this order:
 
-1. Booking safety: structured `SEAT_NO_LONGER_AVAILABLE` error, `CHECK (seatsAvailable >= 0)` migration, and a real concurrency test with assertions and a negative control (the same test fails with the lock removed).
+1. Apply the `Ride` CHECK migration to production (see Done, not verified).
 2. `RolesGuard` and read endpoints for the web dashboard.
 3. Cookie-based refresh and a CORS allowlist for web (replaces `origin: true` in `main.ts`).
 4. Web dashboard, built as a client-side React + TypeScript app on the Next.js 16 scaffold: App Router for routing only, `"use client"` pages, React Query, own `AuthProvider` with the access token in memory. No server actions, no server-side auth, no data fetching in server components. Proxy `/api` to the Render API via `rewrites` so the refresh cookie is same-origin.
@@ -43,13 +50,15 @@ In this order:
 ## Architecture Decisions
 
 - **Money fields use `Decimal`, not `Float`** (`totalFuelCost`, `costPerSeat`) to avoid floating-point rounding in cost splitting. Implemented.
-- **Booking concurrency.** `SELECT ... FOR UPDATE` inside a transaction is the primary guard; `@@unique([rideId, riderId])` is the safety net. Implemented, but concurrency is not yet verified and the structured `SEAT_NO_LONGER_AVAILABLE` error is not yet implemented.
+- **Booking concurrency.** `SELECT ... FOR UPDATE` inside a transaction is the primary guard; `@@unique([rideId, riderId])` is the safety net. Implemented and verified by a real-database concurrency test (2026-10-08). A `CHECK` on `seatsAvailable` backs it up at the database level. Structured `SEAT_NO_LONGER_AVAILABLE` error implemented.
 - **Real `ADMIN` role, not driver self-approval**, so the web dashboard has genuine moderation functionality. The `Role` enum exists; there is no `RolesGuard` and no admin seed script yet. Undoing this means rewriting `architecture-context.md`; don't do it silently.
 - **Payment is fully mocked** (`paymentStatus` enum). No real payment integration in this build.
 - **Web is client-side React on the Next.js scaffold:** App Router for routing only, no server actions, no server-side auth. See Next Up.
 
 ## Open Questions
 
+- A `CHECK` violation (Postgres 23514) is not mapped to an API error, so if the lock were ever bypassed the client would get a 500 instead of `SEAT_NO_LONGER_AVAILABLE` (observed in the negative control). Decide whether to map it as defense in depth.
+- Render `preDeployCommand` (runs `prisma migrate deploy`) may not be available on the free plan. Confirm in the Render dashboard; until then migrations must be applied by hand.
 - API unit specs fail at import without `DATABASE_URL` (`PrismaService` throws in its module). 8 of 11 suites fail: auth controller/service, rides controller/service, vehicles controller/service, users service, prisma service. This is a test setup problem to fix (mock `PrismaService` or provide a test URL), not just something to document.
 - Vipps Login is dormant. Enabling it needs a registered business (Norwegian org number) and a Vipps merchant agreement for credentials, `VIPPS_*` env on Render, the callback URL registered in the Vipps portal, and a screen that calls `loginWithVipps()`. Also verify on iOS that the Vipps app hands the user back into the auth browser session; if not, add `requested_flow=app_to_app` with `app_callback_uri`.
 - CORS currently reflects any origin (`origin: true` in `main.ts`). Needs an allowlist before web goes live.
