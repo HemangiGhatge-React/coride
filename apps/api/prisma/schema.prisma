@@ -64,6 +64,7 @@ model Ride {
   destination    String
   departureTime  DateTime
   seatsTotal     Int
+  // Enforced by CHECK constraints Ride_seatsAvailable_nonnegative and Ride_seatsAvailable_lte_seatsTotal (migration 20261008104552_ride_seats_check)
   seatsAvailable Int
   totalFuelCost  Decimal    @db.Decimal(10, 2)
   costPerSeat    Decimal    @db.Decimal(10, 2)
