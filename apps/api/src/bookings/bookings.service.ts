@@ -13,11 +13,13 @@ function bookingError(Exc: typeof NotFoundException | typeof ConflictException, 
 // Names of the columns behind a P2002, or null when Prisma didn't report them.
 // Prisma 7 with the pg driver adapter may put them in meta.driverAdapterError instead of meta.target.
 function uniqueViolationColumns(err: any): string[] | null {
+    // The adapter reports quoted identifiers (e.g. '"rideId"'), so strip the quotes.
+    const clean = (names: unknown[]) => names.map((n) => String(n).replace(/"/g, ''));
     const target = err?.meta?.target;
-    if (Array.isArray(target)) return target.map(String);
-    if (typeof target === 'string') return [target];
+    if (Array.isArray(target)) return clean(target);
+    if (typeof target === 'string') return clean([target]);
     const fields = err?.meta?.driverAdapterError?.cause?.constraint?.fields;
-    if (Array.isArray(fields)) return fields.map(String);
+    if (Array.isArray(fields)) return clean(fields);
     return null;
 }
 
