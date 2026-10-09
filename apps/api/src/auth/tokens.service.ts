@@ -18,6 +18,13 @@ export interface SessionUser {
   role: string;
 }
 
+/** Request details recorded on the session for the admin sessions view. */
+export interface SessionMeta {
+  userAgent?: string;
+}
+
+const USER_AGENT_MAX_LENGTH = 255;
+
 export interface SessionTokens {
   access_token: string;
   refresh_token: string;
@@ -35,10 +42,17 @@ export class TokensService {
   ) {}
 
   /** Start a new session (new refresh token family) for a freshly authenticated user. */
-  async issueSession(user: SessionUser): Promise<SessionTokens> {
+  async issueSession(
+    user: SessionUser,
+    meta: SessionMeta = {},
+  ): Promise<SessionTokens> {
     return {
       access_token: this.signAccessToken(user),
-      refresh_token: await this.createRefreshToken(user.id, randomUUID()),
+      refresh_token: await this.createRefreshToken(
+        user.id,
+        randomUUID(),
+        meta,
+      ),
     };
   }
 
@@ -47,7 +61,10 @@ export class TokensService {
    * The presented token is revoked (rotation). Presenting an already-rotated
    * token outside the grace window revokes the whole family.
    */
-  async rotate(refreshToken: string): Promise<SessionTokens> {
+  async rotate(
+    refreshToken: string,
+    meta: SessionMeta = {},
+  ): Promise<SessionTokens> {
     const now = new Date();
     const existing = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: hashToken(refreshToken) },
@@ -89,6 +106,7 @@ export class TokensService {
       refresh_token: await this.createRefreshToken(
         existing.userId,
         existing.familyId,
+        meta,
       ),
     };
   }
@@ -114,14 +132,19 @@ export class TokensService {
   private async createRefreshToken(
     userId: string,
     familyId: string,
+    meta: SessionMeta,
   ): Promise<string> {
     const token = randomBytes(32).toString('base64url');
+    const now = Date.now();
     await this.prisma.refreshToken.create({
       data: {
         userId,
         familyId,
         tokenHash: hashToken(token),
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+        expiresAt: new Date(now + REFRESH_TOKEN_TTL_MS),
+        // Every token is created by a login or a rotation, so this is the session's last use.
+        lastUsedAt: new Date(now),
+        userAgent: meta.userAgent?.slice(0, USER_AGENT_MAX_LENGTH) || null,
       },
     });
     return token;

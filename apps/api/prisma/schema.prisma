@@ -9,7 +9,7 @@ datasource db {
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
-  password  String?  // null for accounts created via Vipps Login
+  password  String? // null for accounts created via Vipps Login
   vippsSub  String?  @unique // stable Vipps Login subject identifier
   name      String
   role      Role     @default(DRIVER)
@@ -24,14 +24,16 @@ model User {
 // Opaque refresh tokens, stored hashed. Rotated on every use; all tokens from
 // one login share a familyId so reuse of a rotated token revokes the session.
 model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  familyId  String
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId   String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  userAgent  String? // client that issued this token (User-Agent, truncated)
+  lastUsedAt DateTime? // set when the token is issued; rotation issues a new token, so this is the session's last refresh
 
   @@index([familyId])
   @@index([userId])

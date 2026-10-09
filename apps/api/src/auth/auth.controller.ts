@@ -8,6 +8,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { IsEmail, IsString, MinLength } from 'class-validator';
@@ -39,6 +40,10 @@ class RefreshTokenDto {
   refresh_token: string;
 }
 
+function sessionMeta(req: Request) {
+  return { userAgent: req.headers['user-agent'] };
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -50,14 +55,14 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() body: LoginDto) {
-    return this.authService.login(body.email, body.password);
+  async login(@Body() body: LoginDto, @Req() req: Request) {
+    return this.authService.login(body.email, body.password, sessionMeta(req));
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() body: RefreshTokenDto) {
-    return this.authService.refresh(body.refresh_token);
+  async refresh(@Body() body: RefreshTokenDto, @Req() req: Request) {
+    return this.authService.refresh(body.refresh_token, sessionMeta(req));
   }
 
   @Post('logout')
@@ -68,7 +73,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async me(@Req() req: { user: { userId: string } }) {
+  async me(@Req() req: Request & { user: { userId: string } }) {
     return this.authService.me(req.user.userId);
   }
 }

@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
-import { TokensService } from './tokens.service';
+import { SessionMeta, TokensService } from './tokens.service';
 
 @Injectable()
 export class AuthService {
@@ -31,16 +31,16 @@ export class AuthService {
     return result;
   }
 
-  async login(email: string, plainPassword: string) {
+  async login(email: string, plainPassword: string, meta: SessionMeta = {}) {
     const user = await this.validateUser(email, plainPassword);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    return { ...(await this.tokensService.issueSession(user)), user };
+    return { ...(await this.tokensService.issueSession(user, meta)), user };
   }
 
-  async refresh(refreshToken: string) {
-    return this.tokensService.rotate(refreshToken);
+  async refresh(refreshToken: string, meta: SessionMeta = {}) {
+    return this.tokensService.rotate(refreshToken, meta);
   }
 
   async logout(refreshToken: string) {
