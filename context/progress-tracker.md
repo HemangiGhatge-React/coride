@@ -21,7 +21,7 @@ Update this file after every meaningful implementation change.
   - A: 1 seat, 10 riders -> exactly 1 booking, 9 x 409 `SEAT_NO_LONGER_AVAILABLE`, `seatsAvailable` 0.
   - B: 3 seats, 10 riders -> exactly 3 bookings, `seatsAvailable` 0.
   - C: same rider x 5 -> 1 booking, 4 x 409 `ALREADY_BOOKED`, no 500s, `seatsAvailable` = total - 1.
-  - Negative control (not committed): with `FOR UPDATE` and the CHECKs removed, A and B at 200 ms fail with 10 bookings and `seatsAvailable` -9 / -7. With only `FOR UPDATE` removed and the CHECKs kept, the data stays correct (the losing transactions roll back) but clients get 500 instead of 409.
+  - Negative control (not committed): with `FOR UPDATE` and the CHECKs removed, A and B at 200 ms fail with 10 bookings and `seatsAvailable` -9 / -7. With only `FOR UPDATE` removed and the CHECKs kept, the data stays correct (the losing transactions roll back) but clients get 500 instead of 409 (A: 1 x 201 + 9 x 500; B: 3 x 201 + 7 x 500; Prisma P2039 wrapping Postgres 23514). Re-run 2026-10-09 on the test branch.
   - Booking errors return `{ statusCode, error, code, message }`: `RIDE_NOT_FOUND` (404), `CANNOT_BOOK_OWN_RIDE`, `RIDE_NOT_ACTIVE`, `SEAT_NO_LONGER_AVAILABLE`, `ALREADY_BOOKED` (409).
   - Run: `npx jest --config ./test/jest-e2e.json test/bookings.concurrency.e2e-spec.ts` in `apps/api`. The scaffold `test/app.e2e-spec.ts` is unrelated and does not pass.
 - **Passing specs without `DATABASE_URL`:** 3 suites, 16 tests (tokens, Vipps auth service, app controller).
