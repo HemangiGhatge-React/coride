@@ -2,13 +2,9 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RideStatus } from '@prisma/client';
+import { apiError } from '../common/api-error';
 
-// Error body is a superset of Nest's default { statusCode, error, message } so clients
-// can rely on `code` for booking failures without losing the usual fields.
-function bookingError(Exc: typeof NotFoundException | typeof ConflictException, code: string, message: string) {
-    const e = new Exc();
-    return new Exc({ statusCode: e.getStatus(), error: e.name.replace('Exception', '').replace(/([a-z])([A-Z])/g, '$1 $2'), code, message });
-}
+const bookingError = apiError;
 
 // Names of the columns behind a P2002, or null when Prisma didn't report them.
 // Prisma 7 with the pg driver adapter may put them in meta.driverAdapterError instead of meta.target.

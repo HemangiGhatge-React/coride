@@ -8,10 +8,11 @@ import { ConfigModule } from '@nestjs/config';
 import { RidesModule } from './rides/rides.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { BookingsModule } from './bookings/bookings.module';
+import { AdminModule } from './admin/admin.module';
 
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule, UsersModule, PrismaModule, RidesModule, VehiclesModule, BookingsModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule, UsersModule, PrismaModule, RidesModule, VehiclesModule, BookingsModule, AdminModule],
   controllers: [AppController],
   providers: [AppService],
 })
