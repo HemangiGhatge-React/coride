@@ -6,13 +6,13 @@ Update this file after every meaningful implementation change.
 
 ## Current Phase
 
-- API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch only.
+- API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch and to production (2026-10-09).
 - Mobile: auth screens only (splash, onboarding, login, signup, placeholder Home).
 - Web: Next.js 16 scaffold with UI components, no features.
 
 ## Done (verified)
 
-- **API deploy on Render.** `prisma.config.ts` was being compiled into the app build, which moved output to `dist/src/main.js` while `start:prod` runs `node dist/main`. Fixed by excluding it in `tsconfig.build.json`; `build` runs `prisma generate` first (Prisma 7 has no postinstall generate). Added `GET /health` and `render.yaml`. Checked live: `/health`, register (201), duplicate email (409).
+- **API deploy on Render.** `prisma.config.ts` was being compiled into the app build, which moved output to `dist/src/main.js` while `start:prod` runs `node dist/main`. Fixed by excluding it in `tsconfig.build.json`; `build` runs `prisma generate` first (Prisma 7 has no postinstall generate). Added `GET /health`. (`render.yaml` was later deleted; the service is configured in the Render dashboard, see Deploy and Production Notes.) Checked live: `/health`, register (201), duplicate email (409).
 - **Email/password auth.** `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me`. Manual check against a local API (Oct 3): register 201, duplicate 409, short password 400, wrong password 401, login -> `/auth/me` -> refresh -> logout -> refresh 401. Test user deleted afterwards.
 - **Refresh tokens.** 15 min access JWT; opaque refresh tokens stored as SHA-256 hashes, rotated on every use, token families with reuse detection and a 30 s grace window (`src/auth/tokens.service.ts`). Covered by `tokens.service.spec.ts`.
 - **`JwtAuthGuard`** (`src/auth/jwt-auth.guard.ts`). The Oct 3 manual run called `GET /auth/me`, which goes through the guard (with a valid token it returned the user). Rides and vehicles routes using the same guard have no logged check of their own.
@@ -28,7 +28,7 @@ Update this file after every meaningful implementation change.
 
 ## Done (not verified)
 
-- **`CHECK` constraints on `Ride`** (migration `20261008104552_ride_seats_check`): `seatsAvailable >= 0` and `seatsAvailable <= seatsTotal`. Applied to the test branch only. Production needs `prisma migrate deploy`. Whether Render's `preDeployCommand` runs on the current plan is unconfirmed, so don't assume migrations run on deploy. The production `Ride` rows were checked by hand: none violate either constraint.
+- **`CHECK` constraints on `Ride`** (migration `20261008104552_ride_seats_check`): `seatsAvailable >= 0` and `seatsAvailable <= seatsTotal`. Applied to the test branch and, on 2026-10-09, to production main with `prisma migrate deploy` (done by hand by the owner; no output logged here). Before that, the production `Ride` rows were checked read-only: none violated either constraint. A violation that slips past the row lock now maps to 409 `SEAT_NO_LONGER_AVAILABLE` (`bookings.service.ts`, unit-tested with a stubbed Prisma in `bookings.service.spec.ts`; not re-run against the real database).
 - **Rides** (guard on create/update): create, list, get by id, update (owner only; cancelling is `PATCH` with `status`). No delete. `rides.service.spec.ts` and `rides.controller.spec.ts` exist but fail at import (see Open Questions).
 - **Vehicles** (guard on all routes): create, list own (`GET /vehicles/mine`). Same failing-spec situation.
 - **Vipps Login.** Code kept but dormant: backend `src/auth/vipps/*` (fails closed with no `VIPPS_*` env), mobile `src/auth/vippsLogin.ts` (not imported by any screen). Callback/exchange logic has unit tests, but it has never run against real credentials; those need a Norwegian organisation number.
@@ -40,12 +40,18 @@ Update this file after every meaningful implementation change.
 
 In this order:
 
-1. Apply the `Ride` CHECK migration to production (see Done, not verified).
-2. `RolesGuard` and read endpoints for the web dashboard.
-3. Cookie-based refresh and a CORS allowlist for web (replaces `origin: true` in `main.ts`).
-4. Web dashboard, built as a client-side React + TypeScript app on the Next.js 16 scaffold: App Router for routing only, `"use client"` pages, React Query, own `AuthProvider` with the access token in memory. No server actions, no server-side auth, no data fetching in server components. Proxy `/api` to the Render API via `rewrites` so the refresh cookie is same-origin.
-5. Mobile: ride list, ride detail, create ride, booking flow.
-6. Make the unit specs mock `PrismaService` so they run without a database.
+1. `RolesGuard` and read endpoints for the web dashboard.
+2. Cookie-based refresh and a CORS allowlist for web (replaces `origin: true` in `main.ts`).
+3. Web dashboard, built as a client-side React + TypeScript app on the Next.js 16 scaffold: App Router for routing only, `"use client"` pages, React Query, own `AuthProvider` with the access token in memory. No server actions, no server-side auth, no data fetching in server components. Proxy `/api` to the Render API via `rewrites` so the refresh cookie is same-origin.
+4. Mobile: ride list, ride detail, create ride, booking flow.
+5. Make the unit specs mock `PrismaService` so they run without a database.
+
+## Deploy and Production Notes
+
+- **Render service `coride`** is configured in the dashboard, not in the repo (`render.yaml` deleted). Root Directory `apps/api`; Pre-Deploy Command empty.
+- **Build command:** `npm install --include=dev && npm run build`. `NODE_ENV=production` on Render makes npm skip devDependencies, which removed `@nestjs/cli` and broke the build; `--include=dev` restores it.
+- **Node:** `NODE_VERSION=22.17.0` is pinned in the Render environment.
+- **Production migrations:** applied manually with `prisma migrate deploy` against main's direct URL, after a read-only pre-check of the data. Render does not run migrations on deploy, so every new migration needs the same manual step.
 
 ## Architecture Decisions
 
@@ -57,8 +63,7 @@ In this order:
 
 ## Open Questions
 
-- A `CHECK` violation (Postgres 23514) is not mapped to an API error, so if the lock were ever bypassed the client would get a 500 instead of `SEAT_NO_LONGER_AVAILABLE` (observed in the negative control). Decide whether to map it as defense in depth.
-- Render `preDeployCommand` (runs `prisma migrate deploy`) may not be available on the free plan. Confirm in the Render dashboard; until then migrations must be applied by hand.
+- Review `npm audit` (17 vulnerabilities, 1 critical). Not triaged yet.
 - API unit specs fail at import without `DATABASE_URL` (`PrismaService` throws in its module). 8 of 11 suites fail: auth controller/service, rides controller/service, vehicles controller/service, users service, prisma service. This is a test setup problem to fix (mock `PrismaService` or provide a test URL), not just something to document.
 - Vipps Login is dormant. Enabling it needs a registered business (Norwegian org number) and a Vipps merchant agreement for credentials, `VIPPS_*` env on Render, the callback URL registered in the Vipps portal, and a screen that calls `loginWithVipps()`. Also verify on iOS that the Vipps app hands the user back into the auth browser session; if not, add `requested_flow=app_to_app` with `app_callback_uri`.
 - CORS currently reflects any origin (`origin: true` in `main.ts`). Needs an allowlist before web goes live.

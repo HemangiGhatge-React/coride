@@ -23,6 +23,14 @@ function uniqueViolationColumns(err: any): string[] | null {
     return null;
 }
 
+// True for a Postgres CHECK violation (23514, surfaced by Prisma as P2039) on the Ride seat
+// constraints. Only reachable if the row lock is bypassed, but it must not become a 500.
+function isSeatCheckViolation(err: any): boolean {
+    if (err?.code !== 'P2039') return false;
+    const text = `${err?.message ?? ''} ${err?.meta?.driverAdapterError?.message ?? ''}`;
+    return /Ride_seatsAvailable_(nonnegative|lte_seatsTotal)/.test(text);
+}
+
 @Injectable()
 export class BookingsService {
     constructor(private prisma: PrismaService) { }
@@ -59,6 +67,9 @@ export class BookingsService {
                 });
             });
         } catch (err) {
+            if (isSeatCheckViolation(err)) {
+                throw bookingError(ConflictException, 'SEAT_NO_LONGER_AVAILABLE', 'Not enough seats available');
+            }
             if (err.code === 'P2002') {
                 // Booking has only one unique constraint, (rideId, riderId). If Prisma reports the
                 // violated columns, require both; if it reports none, assume it is that one.
