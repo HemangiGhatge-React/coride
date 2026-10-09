@@ -6,7 +6,7 @@ Update this file after every meaningful implementation change.
 
 ## Current Phase
 
-- API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch and to production (2026-10-09).
+- API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch and to production (2026-10-09). Roles, admin user/session endpoints and cookie refresh are implemented and verified on the test branch (2026-10-09), not yet deployed or migrated in production.
 - Mobile: auth screens only (splash, onboarding, login, signup, placeholder Home).
 - Web: Next.js 16 scaffold with UI components, no features.
 
@@ -24,6 +24,19 @@ Update this file after every meaningful implementation change.
   - Negative control (not committed): with `FOR UPDATE` and the CHECKs removed, A and B at 200 ms fail with 10 bookings and `seatsAvailable` -9 / -7. With only `FOR UPDATE` removed and the CHECKs kept, the data stays correct (the losing transactions roll back) but clients get 500 instead of 409 (A: 1 x 201 + 9 x 500; B: 3 x 201 + 7 x 500; Prisma P2039 wrapping Postgres 23514). Re-run 2026-10-09 on the test branch.
   - Booking errors return `{ statusCode, error, code, message }`: `RIDE_NOT_FOUND` (404), `CANNOT_BOOK_OWN_RIDE`, `RIDE_NOT_ACTIVE`, `SEAT_NO_LONGER_AVAILABLE`, `ALREADY_BOOKED` (409).
   - Run: `npx jest --config ./test/jest-e2e.json test/bookings.concurrency.e2e-spec.ts` in `apps/api`. The scaffold `test/app.e2e-spec.ts` is unrelated and does not pass.
+- **Roles and admin endpoints** (2026-10-09), verified by `test/admin.e2e-spec.ts` (12 tests, real AppModule and database, test branch only):
+  - `@Roles()` + `RolesGuard` (`src/auth/roles.*.ts`). The guard reads the user's *current* role from the database, not the JWT, so a demoted admin gets 403 `FORBIDDEN` immediately (tested: demote, then the old token gets 403). Non-admins get 403 `{ statusCode, error, code: 'FORBIDDEN', message }` on all five `/admin/*` routes.
+  - `GET /admin/users` (search, role, page, pageSize; explicit select, no password hash; `activeSessionCount` = token families with a live token), `PATCH /admin/users/:id/role`, `GET /admin/users/:id/sessions`, `DELETE /admin/sessions/:familyId` (204; 404 `SESSION_NOT_FOUND` for an unknown family), `POST /admin/users/:id/revoke-all` (204).
+  - Guard rails: 409 `CANNOT_CHANGE_OWN_ROLE`; 409 `LAST_ADMIN`. `LAST_ADMIN` is only reachable through a race (the caller must be an admin to get past the guard), so it is tested by two admins demoting each other concurrently via `AdminService.updateRole` (5 rounds: exactly one succeeds, one admin remains). The admin rows are locked `FOR UPDATE`. Negative control: without the lock both demotions succeed and zero admins remain.
+  - Revoking a session (or revoke-all) makes its refresh token return 401 on `/auth/refresh`; the other sessions keep working.
+  - `RefreshToken.userAgent` and `lastUsedAt` (migration `20261009130000_refresh_token_session_meta`) are set on login and on every rotation; `userAgent` is truncated to 255 chars.
+  - `npm run user:promote -- <email>` promotes an existing user to ADMIN (idempotent, never creates users, prints no secrets). Checked on the test branch: not found (exit 1), promoted, already admin, no argument (exit 2). It uses whatever `DATABASE_URL` is set, so pass the production URL deliberately.
+- **Cookie refresh and CORS allowlist** (2026-10-09), verified by `test/auth-cookie.e2e-spec.ts` (12 tests):
+  - `/auth/login` and `/auth/refresh` set `refresh_token` as an httpOnly, Secure, SameSite=Lax cookie, path `/auth` (override with `REFRESH_COOKIE_PATH`, needed if the web proxy serves the API under a prefix such as `/api/auth`). The token is still in the body for mobile.
+  - `/auth/refresh` and `/auth/logout` accept the token from the body or the cookie; logout and a rejected refresh clear the cookie. The tests caught a bug: a request with no body made `body.refresh_token` throw (Express 5 leaves `req.body` undefined), a 500 on every cookie-only refresh. Fixed.
+  - CORS: `origin` is the allowlist in `CORS_ORIGINS` (comma-separated, exact origins), `credentials: true`; unset means no origin is allowed (replaces `origin: true`). `.env.example` added with `localhost:3000`.
+  - The e2e jest config now transforms ESM-only `jose` so the real `AuthModule` loads in tests (`test/jest-e2e.json`).
+  - Run: `npx jest --config ./test/jest-e2e.json test/bookings.concurrency.e2e-spec.ts test/admin.e2e-spec.ts test/auth-cookie.e2e-spec.ts` in `apps/api`: 3 suites, 30 tests passed on 2026-10-09.
 - **Passing specs without `DATABASE_URL`:** 3 suites, 16 tests (tokens, Vipps auth service, app controller).
 
 ## Done (not verified)
@@ -40,29 +53,32 @@ Update this file after every meaningful implementation change.
 
 In this order:
 
-1. `RolesGuard` and read endpoints for the web dashboard.
-2. Cookie-based refresh and a CORS allowlist for web (replaces `origin: true` in `main.ts`).
-3. Web dashboard, built as a client-side React + TypeScript app on the Next.js 16 scaffold: App Router for routing only, `"use client"` pages, React Query, own `AuthProvider` with the access token in memory. No server actions, no server-side auth, no data fetching in server components. Proxy `/api` to the Render API via `rewrites` so the refresh cookie is same-origin.
-4. Mobile: ride list, ride detail, create ride, booking flow.
-5. Make the unit specs mock `PrismaService` so they run without a database.
+1. Read endpoints for the web dashboard (rides, bookings).
+2. Web dashboard, built as a client-side React + TypeScript app on the Next.js 16 scaffold: App Router for routing only, `"use client"` pages, React Query, own `AuthProvider` with the access token in memory. No server actions, no server-side auth, no data fetching in server components. Proxy `/api` to the Render API via `rewrites` so the refresh cookie is same-origin.
+3. Mobile: ride list, ride detail, create ride, booking flow.
+4. Make the unit specs mock `PrismaService` so they run without a database.
 
 ## Deploy and Production Notes
 
 - **Render service `coride`** is configured in the dashboard, not in the repo (`render.yaml` deleted). Root Directory `apps/api`; Pre-Deploy Command empty.
 - **Build command:** `npm install --include=dev && npm run build`. `NODE_ENV=production` on Render makes npm skip devDependencies, which removed `@nestjs/cli` and broke the build; `--include=dev` restores it.
 - **Node:** `NODE_VERSION=22.17.0` is pinned in the Render environment.
+- **Before deploying the roles/cookie work:** (1) apply migration `20261009130000_refresh_token_session_meta` to production first, because Prisma selects the new columns and refresh would fail against the old schema; (2) set `CORS_ORIGINS` on Render to the web origin(s), since an empty value now refuses all browser origins; (3) set `REFRESH_COOKIE_PATH` if the web proxy exposes the API under a prefix; (4) create the first admin with `npm run user:promote -- <email>` using production's `DATABASE_URL`.
 - **Production migrations:** applied manually with `prisma migrate deploy` against main's direct URL, after a read-only pre-check of the data. Render does not run migrations on deploy, so every new migration needs the same manual step.
 
 ## Architecture Decisions
 
 - **Money fields use `Decimal`, not `Float`** (`totalFuelCost`, `costPerSeat`) to avoid floating-point rounding in cost splitting. Implemented.
 - **Booking concurrency.** `SELECT ... FOR UPDATE` inside a transaction is the primary guard; `@@unique([rideId, riderId])` is the safety net. Implemented and verified by a real-database concurrency test (2026-10-08). A `CHECK` on `seatsAvailable` backs it up at the database level. Structured `SEAT_NO_LONGER_AVAILABLE` error implemented.
-- **Real `ADMIN` role, not driver self-approval**, so the web dashboard has genuine moderation functionality. The `Role` enum exists; there is no `RolesGuard` and no admin seed script yet. Undoing this means rewriting `architecture-context.md`; don't do it silently.
+- **Real `ADMIN` role, not driver self-approval**, so the web dashboard has genuine moderation functionality. The `Role` enum, `RolesGuard` and `npm run user:promote` exist. Undoing this means rewriting `architecture-context.md`; don't do it silently.
 - **Payment is fully mocked** (`paymentStatus` enum). No real payment integration in this build.
 - **Web is client-side React on the Next.js scaffold:** App Router for routing only, no server actions, no server-side auth. See Next Up.
 
 ## Open Questions
 
+- **Known trade-off: access tokens outlive revocation.** Revoking a session or all of a user's sessions stops refresh immediately, but an access token already issued stays valid until it expires (up to 15 minutes), because access tokens are stateless JWTs. `RolesGuard` avoids this for admin routes by reading the role from the database; other routes trust the JWT. Options if this matters: a shorter access TTL; a `sid` (family id) claim in the access token checked against revoked families on each request (one query per request); or a denylist of revoked sessions/tokens held in memory or the database.
+- The test branch is a copy of main, so it contains real user rows. `test/admin.e2e-spec.ts` temporarily demotes any existing admins (the last-admin rule depends on the global count) and restores them afterwards. Use an empty or seeded test branch if this becomes a concern.
+- `DIRECT_URL` in `apps/api/.env.test` points at the `-pooler` host, the same as `DATABASE_URL`. It worked for `migrate deploy`, but is not a true direct connection.
 - Review `npm audit` (17 vulnerabilities, 1 critical). Not triaged yet.
 - API unit specs fail at import without `DATABASE_URL` (`PrismaService` throws in its module). 8 of 11 suites fail: auth controller/service, rides controller/service, vehicles controller/service, users service, prisma service. This is a test setup problem to fix (mock `PrismaService` or provide a test URL), not just something to document.
 - Vipps Login is dormant. Enabling it needs a registered business (Norwegian org number) and a Vipps merchant agreement for credentials, `VIPPS_*` env on Render, the callback URL registered in the Vipps portal, and a screen that calls `loginWithVipps()`. Also verify on iOS that the Vipps app hands the user back into the auth browser session; if not, add `requested_flow=app_to_app` with `app_callback_uri`.

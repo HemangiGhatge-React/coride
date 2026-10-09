@@ -4,8 +4,26 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": {
+          "allowJs": true,
+          "module": "commonjs",
+          "moduleResolution": "node10",
+          "resolvePackageJsonExports": false,
+          "esModuleInterop": true,
+          "emitDecoratorMetadata": true,
+          "experimentalDecorators": true,
+          "target": "ES2023",
+          "strictNullChecks": true,
+          "skipLibCheck": true,
+          "isolatedModules": true
+        }
+      }
+    ]
   },
+  "transformIgnorePatterns": ["/node_modules/(?!jose/)"],
   "setupFiles": ["<rootDir>/load-test-env.ts"],
   "testTimeout": 60000
 }
