@@ -1,7 +1,5 @@
-export default function Page() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      coride
-    </div>
-  );
+import { redirect } from "next/navigation";
+
+export default function Home() {
+  redirect("/admin");
 }
