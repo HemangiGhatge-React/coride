@@ -2,9 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./client";
 import { getMe, listAdminUsers, login } from "./endpoints";
 import { ApiError, NETWORK_ERROR } from "./errors";
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+import { fakeFetch, json } from "./test-utils";
 
 const user = { id: "u1", email: "a@example.test", name: "A", role: "ADMIN" };
 const usersList = {
@@ -13,18 +11,6 @@ const usersList = {
   page: 1,
   pageSize: 20,
 };
-
-/** A fetch fake that records calls and answers with `handler`. */
-function fakeFetch(handler: (url: string, init: RequestInit, token: string | null) => Response | Promise<Response>) {
-  const calls: { url: string; init: RequestInit; token: string | null }[] = [];
-  const fn = vi.fn(async (url: string, init: RequestInit = {}) => {
-    const auth = new Headers(init.headers).get("Authorization");
-    const token = auth ? auth.replace("Bearer ", "") : null;
-    calls.push({ url, init, token });
-    return handler(url, init, token);
-  });
-  return { fn, calls, count: (path: string) => calls.filter((c) => c.url === path).length };
-}
 
 describe("api client: refresh on 401", () => {
   it("3 parallel requests that get 401 trigger exactly one refresh, and all 3 are retried and succeed", async () => {
