@@ -1,0 +1,4 @@
+# Next.js build output (the root .gitignore only matches /.next at the repo root)
+/.next/
+/out/
+*.tsbuildinfo
