@@ -21,7 +21,8 @@
 
 ## Next.js (web)
 
-- Default to server components; add `"use client"` only where browser interactivity (forms, buttons with handlers) requires it.
+- The web app is a client-side React app: App Router for routing only, `"use client"` pages, React Query for server state, no server actions, no server-side auth and no data fetching in server components (see `architecture-context.md`). Layouts and static shells may stay server components; anything that touches auth state or API data is a client component.
+- The browser only calls `/api/...` (same origin, proxied to the API by `rewrites`). Never call the API origin directly and never store tokens in `localStorage`/`sessionStorage`; the access token lives in memory and the refresh token only in the httpOnly cookie.
 - Keep route/page components focused — data fetching and presentation can be split if a page grows complex, but do not over-engineer this for a dashboard this small.
 
 ## React Native (mobile)
