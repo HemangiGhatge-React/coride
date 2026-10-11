@@ -109,6 +109,48 @@ describe('refresh cookie and CORS', () => {
     });
   });
 
+  describe('X-Client: web (refresh token only in the cookie)', () => {
+    it('login omits refresh_token from the body but still sets the cookie', async () => {
+      const res = await login().set('X-Client', 'web');
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('refresh_token');
+      expect(typeof res.body.access_token).toBe('string');
+      expect(res.body.user.email).toBe(email);
+      expect(refreshCookie(res)).toBeDefined();
+    });
+
+    it('refresh omits refresh_token from the body, rotates the cookie, and keeps working', async () => {
+      const first = await login().set('X-Client', 'web');
+      const cookie = refreshCookie(first)!.split(';')[0];
+
+      const res = await http().post('/auth/refresh').set('X-Client', 'web').set('Cookie', cookie);
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty('refresh_token');
+      expect(typeof res.body.access_token).toBe('string');
+      const rotated = refreshCookie(res);
+      expect(rotated).toBeDefined();
+      expect(cookieValue(rotated!)).not.toBe(cookieValue(cookie + ';'));
+
+      const next = await http().post('/auth/refresh').set('X-Client', 'web').set('Cookie', rotated!.split(';')[0]);
+      expect(next.status).toBe(200);
+    });
+
+    it('without the header (mobile) the body still contains refresh_token, on login and refresh', async () => {
+      const loginRes = await login();
+      expect(typeof loginRes.body.refresh_token).toBe('string');
+      expect(cookieValue(refreshCookie(loginRes)!)).toBe(loginRes.body.refresh_token);
+
+      const refreshRes = await http().post('/auth/refresh').send({ refresh_token: loginRes.body.refresh_token });
+      expect(refreshRes.status).toBe(200);
+      expect(typeof refreshRes.body.refresh_token).toBe('string');
+    });
+
+    it('any other X-Client value is treated as non-web', async () => {
+      const res = await login().set('X-Client', 'ios');
+      expect(typeof res.body.refresh_token).toBe('string');
+    });
+  });
+
   describe('logout', () => {
     it('reads the cookie, clears it, and kills the session', async () => {
       const first = await login();

@@ -46,6 +46,18 @@ class RefreshTokenDto {
   refresh_token?: string;
 }
 
+// Web clients send `X-Client: web` and get the refresh token only in the httpOnly cookie, so
+// script on the page can never read it. Clients without the header (mobile) get it in the body.
+function isWebClient(req: Request) {
+  return req.headers['x-client'] === 'web';
+}
+
+function forClient<T extends { refresh_token: string }>(req: Request, result: T) {
+  if (!isWebClient(req)) return result;
+  const { refresh_token: _omitted, ...rest } = result;
+  return rest;
+}
+
 function sessionMeta(req: Request) {
   return { userAgent: req.headers['user-agent'] };
 }
@@ -72,7 +84,7 @@ export class AuthController {
       sessionMeta(req),
     );
     setRefreshCookie(res, result.refresh_token);
-    return result;
+    return forClient(req, result);
   }
 
   @Post('refresh')
@@ -87,7 +99,7 @@ export class AuthController {
     try {
       const result = await this.authService.refresh(token, sessionMeta(req));
       setRefreshCookie(res, result.refresh_token);
-      return result;
+      return forClient(req, result);
     } catch (err) {
       // A rejected token should not keep being sent by the browser (but keep it on server errors).
       if (err instanceof UnauthorizedException) clearRefreshCookie(res);
