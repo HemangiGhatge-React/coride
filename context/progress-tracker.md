@@ -8,7 +8,7 @@ Update this file after every meaningful implementation change.
 
 - API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch and to production (2026-10-09). Roles, admin user/session endpoints and cookie refresh are implemented and verified on the test branch (2026-10-09), not yet deployed or migrated in production.
 - Mobile: auth screens only (splash, onboarding, login, signup, placeholder Home).
-- Web: Next.js 16 scaffold with UI components, no features.
+- Web: client-side foundation built (proxy, API client, auth, login, guarded /admin, users-count placeholder), 39 Vitest tests passing; the live check against the production API is pending (see Done, not verified).
 
 ## Done (verified)
 
@@ -49,7 +49,13 @@ Update this file after every meaningful implementation change.
 - **Vipps Login.** Code kept but dormant: backend `src/auth/vipps/*` (fails closed with no `VIPPS_*` env), mobile `src/auth/vippsLogin.ts` (not imported by any screen). Callback/exchange logic has unit tests, but it has never run against real credentials; those need a Norwegian organisation number.
 - **Payment is mocked.** `paymentStatus` is `MOCK_UNPAID` (default) / `MOCK_PAID`; no code writes it.
 - **Mobile auth.** Login and Signup screens, `AuthContext`, SecureStore token storage, API client with 401 -> single refresh -> one retry, placeholder Home. No logged run on a device or emulator.
-- **Web.** Next.js 16 scaffold with UI components and a placeholder page. No features.
+- **Web foundation** (`apps/web`, 2026-10-11; unit-tested, **not yet checked live**: steps below):
+  - `next.config.ts` rewrites `/api/:path*` to `${API_ORIGIN}/:path*` (`.env.local`, template in `.env.example`; 60 s proxy timeout for Render cold starts). The browser only calls `/api/...`, so the refresh cookie (`Path=/api/auth`, `REFRESH_COOKIE_PATH` on Render) is same-origin and no CORS is involved.
+  - `lib/api`: typed fetch client, access token in memory only, `ApiError { status, code, message }`, zod schemas (login, `/auth/me`, `/admin/users`). Requests send `X-Client: web`, so the API returns the refresh token only in the httpOnly cookie and the schemas never expect it.
+  - `lib/auth`: `AuthProvider`/`useAuth()` (`loading | authenticated | anonymous`), session restore on load (cookie refresh then `/auth/me`), logout, TanStack Query provider.
+  - Routes: `/login` (labelled form, aria-live error, disabled while pending, safe `?next`), `/admin` guard (skeleton / redirect to `/login?next=` / in-page 403 for non-admins, no redirect loop), header with email + Log out, `/admin/users` placeholder showing the total from `GET /api/admin/users`, `/` redirects to `/admin`.
+  - Tests (`npm test` in `apps/web`, Vitest + Testing Library): 3 parallel 401s -> exactly 1 refresh and 3 retries; refresh 401 -> anonymous; network error / 5xx on refresh do not log out; React StrictMode sends one refresh; network retry with the "Connection problem, retrying…" notice; non-ADMIN sees the 403 page; login form behaviour; `safeNextPath`. Negative controls: without the shared refresh promise the parallel-401 test sees 3 refreshes and the StrictMode test sees 2.
+  - Fixed on the way: `globals.css` used Tailwind 3 directives under Tailwind 4 (utilities were generated but the base reset was missing).
 
 ## Next Up
 
@@ -65,6 +71,7 @@ In this order:
 - **Render service `coride`** is configured in the dashboard, not in the repo (`render.yaml` deleted). Root Directory `apps/api`; Pre-Deploy Command empty.
 - **Build command:** `npm install --include=dev && npm run build`. `NODE_ENV=production` on Render makes npm skip devDependencies, which removed `@nestjs/cli` and broke the build; `--include=dev` restores it.
 - **Node:** `NODE_VERSION=22.17.0` is pinned in the Render environment.
+- **Web cookie path:** `REFRESH_COOKIE_PATH=/api/auth` is set on Render so the browser sends the refresh cookie to `/api/auth/*` through the web proxy. The web app needs `API_ORIGIN` (see `apps/web/.env.example`).
 - **Before deploying the roles/cookie work:** (1) apply migration `20261009130000_refresh_token_session_meta` to production first, because Prisma selects the new columns and refresh would fail against the old schema; (2) set `CORS_ORIGINS` on Render to the web origin(s), since an empty value now refuses all browser origins; (3) set `REFRESH_COOKIE_PATH` if the web proxy exposes the API under a prefix; (4) create the first admin with `npm run user:promote -- <email>` using production's `DATABASE_URL`.
 - **Production migrations:** applied manually with `prisma migrate deploy` against main's direct URL, after a read-only pre-check of the data. Render does not run migrations on deploy, so every new migration needs the same manual step.
 
@@ -75,9 +82,16 @@ In this order:
 - **Real `ADMIN` role, not driver self-approval**, so the web dashboard has genuine moderation functionality. The `Role` enum, `RolesGuard` and `npm run user:promote` exist. Undoing this means rewriting `architecture-context.md`; don't do it silently.
 - **Payment is fully mocked** (`paymentStatus` enum). No real payment integration in this build.
 - **Web is client-side React on the Next.js scaffold:** App Router for routing only, no server actions, no server-side auth. See Next Up.
+- **One shared refresh promise in the web client.** Refresh tokens rotate, so two concurrent refreshes with the same cookie race: the server revokes the first one's new token, and whichever response the browser applies last can leave a revoked token in the cookie, which logs the user out about 30 s later (after the reuse grace window). `lib/api/client.ts` therefore keeps a single in-flight refresh promise at module level, used by both the 401 handler and session restore on load. This also covers React StrictMode, which runs effects twice in development. Multiple browser tabs still refresh independently; the API's 30 s grace window is what covers that.
+- **Web logs out only on a definitive rejection** (401/403 from `/auth/refresh`), like mobile. Network errors and 5xx never log out; they show a polite "Connection problem, retrying…" notice and are retried.
+- **The refresh token never reaches page scripts:** web requests send `X-Client: web` and the API omits `refresh_token` from the JSON body (cookie only). Mobile, which sends no such header, still gets it in the body.
 
 ## Open Questions
 
+- The root `package-lock.json` has no `@rolldown/binding-*` entries (npm optional-dependency bug), so on a fresh install `npm test` in `apps/web` can fail with "Cannot find native binding". Locally fixed with `npm install --no-save @rolldown/binding-<platform>@<rolldown version>` (win32-x64-msvc here). Not fixed in the lockfile; CI would need the same, or a regenerated lockfile.
+- The `Secure` refresh cookie works on `http://localhost` in Chrome, Edge and Firefox but not in Safari, so use one of those for local web development.
+- Logging out while the server is unreachable signs out locally but cannot clear the httpOnly cookie, so a reload may restore the session.
+- On a fresh visit the web app's session restore calls `POST /auth/refresh` without a cookie and gets a 401; expected, but it shows in server logs and the browser console.
 - **Known trade-off: access tokens outlive revocation.** Revoking a session or all of a user's sessions stops refresh immediately, but an access token already issued stays valid until it expires (up to 15 minutes), because access tokens are stateless JWTs. `RolesGuard` avoids this for admin routes by reading the role from the database; other routes trust the JWT. Options if this matters: a shorter access TTL; a `sid` (family id) claim in the access token checked against revoked families on each request (one query per request); or a denylist of revoked sessions/tokens held in memory or the database.
 - The test branch is a copy of main, so it contains real user rows. `test/admin.e2e-spec.ts` temporarily demotes any existing admins (the last-admin rule depends on the global count) and restores them afterwards. Use an empty or seeded test branch if this becomes a concern.
 - `DIRECT_URL` in `apps/api/.env.test` points at the `-pooler` host, the same as `DATABASE_URL`. It worked for `migrate deploy`, but is not a true direct connection.
