@@ -47,3 +47,13 @@ export const adminUsersListSchema = z.object({
   pageSize: z.number().int(),
 });
 export type AdminUsersList = z.infer<typeof adminUsersListSchema>;
+
+/** GET /admin/users/:id/sessions: one entry per active session (refresh-token family). */
+export const sessionSchema = z.object({
+  familyId: z.string(),
+  createdAt: z.string(),
+  lastUsedAt: z.string().nullable(), // null for sessions that predate the column
+  userAgent: z.string().nullable(),
+});
+export type UserSession = z.infer<typeof sessionSchema>;
+export const sessionsListSchema = z.array(sessionSchema);

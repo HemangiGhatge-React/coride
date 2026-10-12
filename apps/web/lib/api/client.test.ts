@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./client";
-import { getAdminUser, getMe, listAdminUsers, login, updateUserRole } from "./endpoints";
+import { getAdminUser, getMe, listAdminUsers, listUserSessions, login, revokeAllSessions, revokeSession, updateUserRole } from "./endpoints";
 import { ApiError, NETWORK_ERROR } from "./errors";
 import { fakeFetch, json } from "./test-utils";
 
@@ -225,5 +225,34 @@ describe("admin user endpoints", () => {
     expect(url).toBe("/api/admin/users/u1/role");
     expect(init.method).toBe("PATCH");
     expect(JSON.parse(init.body as string)).toEqual({ role: "DRIVER" });
+  });
+});
+
+describe("session endpoints", () => {
+  const sessions = [
+    { familyId: "f1", createdAt: "2026-10-01T10:00:00.000Z", lastUsedAt: "2026-10-10T10:00:00.000Z", userAgent: "okhttp/4.9.2" },
+    { familyId: "f2", createdAt: "2026-09-01T10:00:00.000Z", lastUsedAt: null, userAgent: null }, // an old session
+  ];
+
+  it("listUserSessions parses sessions, including old ones with no last-used time or user agent", async () => {
+    const f = fakeFetch(() => json(sessions));
+    const client = createApiClient({ fetch: f.fn });
+    client.setAccessToken("t");
+    await expect(listUserSessions(client, "u1")).resolves.toEqual(sessions);
+    expect(f.calls[0].url).toBe("/api/admin/users/u1/sessions");
+  });
+
+  it("revokeSession sends DELETE and revokeAllSessions sends POST; both accept 204", async () => {
+    const f = fakeFetch(() => new Response(null, { status: 204 }));
+    const client = createApiClient({ fetch: f.fn });
+    client.setAccessToken("t");
+
+    await expect(revokeSession(client, "fam/1")).resolves.toBeUndefined();
+    await expect(revokeAllSessions(client, "u1")).resolves.toBeUndefined();
+
+    expect(f.calls[0]).toMatchObject({ url: "/api/admin/sessions/fam%2F1" });
+    expect(f.calls[0].init.method).toBe("DELETE");
+    expect(f.calls[1]).toMatchObject({ url: "/api/admin/users/u1/revoke-all" });
+    expect(f.calls[1].init.method).toBe("POST");
   });
 });

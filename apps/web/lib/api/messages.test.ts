@@ -7,6 +7,8 @@ describe("describeApiError", () => {
     ["CANNOT_CHANGE_OWN_ROLE", "You can't change your own role."],
     ["LAST_ADMIN", "At least one admin must remain."],
     ["USER_NOT_FOUND", "This user no longer exists."],
+    ["SESSION_NOT_FOUND", "That session had already ended."],
+    ["FORBIDDEN", "Your account doesn't have admin access."],
     [NETWORK_ERROR, "Can't reach the server. Check your connection and try again."],
   ])("maps %s to a plain message", (code, message) => {
     expect(describeApiError(new ApiError(409, code, "raw server text"))).toBe(message);

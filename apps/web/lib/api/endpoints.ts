@@ -4,6 +4,7 @@ import {
   adminUsersListSchema,
   loginResponseSchema,
   meResponseSchema,
+  sessionsListSchema,
   updatedUserSchema,
   type Role,
 } from "./schemas";
@@ -55,4 +56,18 @@ export function updateUserRole(client: ApiClient, id: string, role: Role) {
     body: { role },
     schema: updatedUserSchema,
   });
+}
+
+export function listUserSessions(client: ApiClient, userId: string) {
+  return client.request(`/admin/users/${encodeURIComponent(userId)}/sessions`, { schema: sessionsListSchema });
+}
+
+/** Ends one session (204). Access already issued stays valid until it expires. */
+export function revokeSession(client: ApiClient, familyId: string) {
+  return client.request(`/admin/sessions/${encodeURIComponent(familyId)}`, { method: "DELETE" });
+}
+
+/** Ends every session of a user (204). */
+export function revokeAllSessions(client: ApiClient, userId: string) {
+  return client.request(`/admin/users/${encodeURIComponent(userId)}/revoke-all`, { method: "POST" });
 }
