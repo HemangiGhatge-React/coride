@@ -71,6 +71,7 @@ In this order:
 - **Render service `coride`** is configured in the dashboard, not in the repo (`render.yaml` deleted). Root Directory `apps/api`; Pre-Deploy Command empty.
 - **Build command:** `npm install --include=dev && npm run build`. `NODE_ENV=production` on Render makes npm skip devDependencies, which removed `@nestjs/cli` and broke the build; `--include=dev` restores it.
 - **Node:** `NODE_VERSION=22.17.0` is pinned in the Render environment.
+- **Lockfile:** the repo has one lockfile, the root `package-lock.json` (npm workspaces). `apps/web/package-lock.json` was a stale pre-monorepo leftover and is deleted. On 2026-10-12 the 15 missing `@rolldown/binding-*` platform entries (npm optional-dependency bug, npm/cli#4828) were added so Vitest's native binding resolves on Linux, macOS and Windows; every optional dependency in the lockfile now has an entry. A strict `npm ci` on Windows then ran `npm test` (39 passed) and `next build` without any manual workaround. If `npm install` ever drops these again, regenerate the entries rather than the whole lockfile (a full regenerate re-resolves api and mobile too).
 - **Web cookie path:** `REFRESH_COOKIE_PATH=/api/auth` is set on Render so the browser sends the refresh cookie to `/api/auth/*` through the web proxy. The web app needs `API_ORIGIN` (see `apps/web/.env.example`).
 - **Before deploying the roles/cookie work:** (1) apply migration `20261009130000_refresh_token_session_meta` to production first, because Prisma selects the new columns and refresh would fail against the old schema; (2) set `CORS_ORIGINS` on Render to the web origin(s), since an empty value now refuses all browser origins; (3) set `REFRESH_COOKIE_PATH` if the web proxy exposes the API under a prefix; (4) create the first admin with `npm run user:promote -- <email>` using production's `DATABASE_URL`.
 - **Production migrations:** applied manually with `prisma migrate deploy` against main's direct URL, after a read-only pre-check of the data. Render does not run migrations on deploy, so every new migration needs the same manual step.
@@ -88,7 +89,6 @@ In this order:
 
 ## Open Questions
 
-- The root `package-lock.json` has no `@rolldown/binding-*` entries (npm optional-dependency bug), so on a fresh install `npm test` in `apps/web` can fail with "Cannot find native binding". Locally fixed with `npm install --no-save @rolldown/binding-<platform>@<rolldown version>` (win32-x64-msvc here). Not fixed in the lockfile; CI would need the same, or a regenerated lockfile.
 - The `Secure` refresh cookie works on `http://localhost` in Chrome, Edge and Firefox but not in Safari, so use one of those for local web development.
 - Logging out while the server is unreachable signs out locally but cannot clear the httpOnly cookie, so a reload may restore the session.
 - On a fresh visit the web app's session restore calls `POST /auth/refresh` without a cookie and gets a 401; expected, but it shows in server logs and the browser console.
