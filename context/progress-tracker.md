@@ -8,7 +8,7 @@ Update this file after every meaningful implementation change.
 
 - API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch and to production (2026-10-09). Roles, admin user/session endpoints and cookie refresh are implemented and verified on the test branch (2026-10-09), not yet deployed or migrated in production.
 - Mobile: auth screens only (splash, onboarding, login, signup, placeholder Home).
-- Web: client-side foundation and Day 3 (users table, user detail with a confirmed role change) verified live against the production API (2026-10-12); 101 Vitest tests. Next: the active-sessions section and the rides/bookings views.
+- Web: client-side foundation and Day 3 (users table, user detail with a confirmed role change) verified live against the production API (2026-10-12). Day 4 built and unit-tested (168 Vitest tests), live check pending: active sessions with revoke / sign out everywhere, the login-page warm-up, and the README. Next: the rides/bookings views.
 
 ## Done (verified)
 
@@ -55,6 +55,12 @@ Update this file after every meaningful implementation change.
   - Bug found by the table tests: pressing Back while a debounced search update was still pending let the update fire afterwards and undo the Back; any URL change not made by the component now cancels it (negative control: the test fails without the cancel).
   - API: `GET /admin/users/:id` (tests in `admin.e2e-spec.ts`) and the demo seed (`npm run seed:demo` / `seed:demo:remove` in `apps/api`, 5 tests). 47 API e2e tests pass in total (they now run serially, `maxWorkers: 1`, because they share one database and the admin suite counts global admins).
   - **Live check (2026-10-12, manual, against production through the web app; the owner ran it):** all 9 checks passed, with the demo data seeded in production (23 users in total, which is 3 pages at size 10). The owner's checklist was not itemised in this repo, so only the overall result is recorded; it covered the table, the user detail page and the role change.
+- **Active sessions on the user detail page, login warm-up, README** (`apps/web`, 2026-10-12; unit-tested with Vitest, **not yet checked live**; the API endpoints it uses already existed and are tested):
+  - Sessions list: device label from the User-Agent (`lib/device.ts`: "Chrome on Windows", "Safari on iPhone", "CoRide Android app", ...; "Unknown device" when there is none, as for sessions that predate the column), last used as relative time with the exact time in a tooltip, signed-in date. The label handles the overlaps in real user agents (Edge/Opera say Chrome, Chrome says Safari, iPhone says Mac OS X, Android says Linux) and React Native's default stacks (`okhttp/` -> "Android app", `CFNetwork` -> "iOS app").
+  - Revoke one session ("Sign Kari Nordmann out of Chrome on Windows?") and "Sign out everywhere" ("End all 3 sessions for Kari Nordmann?", disabled at 0 sessions), both behind a confirmation dialog. Not optimistic: the dialog stays busy until the server answers, then the sessions, the users list and the detail (session count) are refetched together by invalidating the `["admin","users"]` key prefix, and "Session revoked" / "All sessions ended" is announced in a polite live region. On your own profile both dialogs warn that you may be signed out on this device too (the existing 401 -> `/login` flow handles it). A session that had already ended gets "That session had already ended." and a refresh. Focus moves to the section heading when the revoked row disappears. Helper text states the honest limit: access already issued stays valid for up to 15 minutes.
+  - Warm-up: `/login` fires `GET /api/health` once on mount (no await, errors ignored; one request even under StrictMode), and "Waking up the server…" appears under the button if sign-in takes more than 5 seconds.
+  - README: new "Web admin" section (what it does, the auth design, how to run it, a live-demo placeholder for the Vercel URL, known trade-offs) and a corrected status table.
+  - Tests: device parsing for every known user agent and the fallbacks, relative time, the 16 sessions tests (three of which fail if the post-success refetch is removed), warm-up once, and the 5 s notice (fake timers).
 - **Passing specs without `DATABASE_URL`:** 3 suites, 16 tests (tokens, Vipps auth service, app controller).
 
 ## Done (not verified)
@@ -70,10 +76,9 @@ Update this file after every meaningful implementation change.
 
 In this order:
 
-1. Active-sessions section on the user detail page (the API already has the endpoints: list, revoke one, revoke all).
-2. Read endpoints and views for rides and bookings in the web dashboard.
-3. Mobile: ride list, ride detail, create ride, booking flow.
-4. Make the unit specs mock `PrismaService` so they run without a database.
+1. Read endpoints and views for rides and bookings in the web dashboard.
+2. Mobile: ride list, ride detail, create ride, booking flow.
+3. Make the unit specs mock `PrismaService` so they run without a database.
 
 ## Deploy and Production Notes
 
@@ -99,6 +104,8 @@ In this order:
 
 ## Open Questions
 
+- **Several tabs refreshing at the same instant can log the user out (verified, rare in practice).** All tabs share one refresh cookie, and refresh tokens rotate. A throwaway test against the real API (20 trials of two simultaneous refreshes with the same cookie, test branch, not committed) found two outcomes. (a) In 19 of 20, one request wins the claim in `rotate()` (`tokens.service.ts`, the conditional update) and the other gets `401 INVALID_REFRESH_TOKEN`; the controller's 401 response also carries a `Set-Cookie` that *clears* the cookie, so if that response is applied last the winner's new token is wiped too, and the losing tab logs out at once. (b) In 1 of 20, both succeed, but the second request revokes the first one's new token (`familyStillActive` and within the 30 s grace, then `revokeFamily`) and creates another; if the browser applies the first response's `Set-Cookie` last, the cookie holds a revoked token, and the next refresh after the 30 s grace is treated as reuse (`REFRESH_TOKEN_REUSED`): the whole family is revoked, so every tab is logged out (confirmed by ageing the revocation by 31 s). The grace window only covers one client retrying a lost response, not several tabs. The trigger is two tabs refreshing within the same few milliseconds, e.g. a browser restoring several dashboard tabs at once, which is why it is rare. **Fix, not implemented:** coordinate across tabs so only one refreshes at a time, with the Web Locks API (`navigator.locks.request("coride-refresh", ...)`, re-reading whether the token was already refreshed once the lock is held) or a `BroadcastChannel`. A server-side hardening would also help: treat a lost claim (`claimed.count === 0`) like the grace-window retry instead of a 401, and do not clear the cookie on `INVALID_REFRESH_TOKEN`. Documented in the README under Known trade-offs.
+- **The mobile client should send a `CoRide/<version>` User-Agent** so its sessions read "CoRide Android app" / "CoRide iOS app" in the admin sessions list instead of the generic "Android app" / "iOS app" (React Native's default `okhttp/` and `CFNetwork` user agents). Out of scope for now.
 - **Stale admin UI after demotion (known limitation):** if an admin is demoted while the dashboard is open, the header and the `/admin` guard keep treating them as an admin until they reload (the web app only reads its own role at load). The API is not affected: `RolesGuard` reads the role from the database, so every admin request returns 403 `FORBIDDEN`, and the pages that call it show the 403 view. A fix would re-read `/auth/me` when a `FORBIDDEN` arrives.
 - The `Secure` refresh cookie works on `http://localhost` in Chrome, Edge and Firefox but not in Safari, so use one of those for local web development.
 - Logging out while the server is unreachable signs out locally but cannot clear the httpOnly cookie, so a reload may restore the session.
