@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getAdminUser, updateUserRole, type AdminUser } from "@/lib/api";
+import { ApiError, getAdminUser, listUserSessions, updateUserRole, type AdminUser } from "@/lib/api";
 import { AuthContext } from "@/lib/auth/auth-context";
 import { formatDate } from "@/lib/format";
 import { fakeNavigation } from "@/lib/test-utils/navigation";
@@ -13,6 +13,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   getAdminUser: vi.fn(),
   updateUserRole: vi.fn(),
+  listUserSessions: vi.fn(),
 }));
 
 const getUser = vi.mocked(getAdminUser);
@@ -56,6 +57,7 @@ const roleSelect = () => screen.getByLabelText("Role");
 const trigger = () => screen.getByRole("button", { name: "Change role" });
 
 beforeEach(() => {
+  vi.mocked(listUserSessions).mockResolvedValue([]); // the sessions section has its own tests
   getUser.mockReset();
   setRole.mockReset();
   getUser.mockResolvedValue(kari());

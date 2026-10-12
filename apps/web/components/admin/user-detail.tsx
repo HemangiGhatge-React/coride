@@ -23,6 +23,7 @@ import { useAuth } from "@/lib/auth/auth-context";
 import { formatDate } from "@/lib/format";
 import { parseUsersQuery, toSearchString } from "@/lib/users-query";
 import { Forbidden } from "./forbidden";
+import { UserSessions } from "./user-sessions";
 import { RoleBadge, USERS_QUERY_KEY } from "./users-table";
 
 const roleLabel = (role: Role) => (role === "ADMIN" ? "Admin" : "Driver");
@@ -216,15 +217,7 @@ function UserDetailBody({
         </p>
       </Card>
 
-      <section aria-labelledby="sessions-heading">
-        <h2 id="sessions-heading" className="mb-2 text-base font-semibold text-slate-900">
-          Active sessions
-        </h2>
-        <div className="rounded-lg border border-dashed border-slate-300 p-6 text-sm text-slate-500">
-          Session details and revoking are coming next. This user currently has {user.activeSessionCount} active{" "}
-          {user.activeSessionCount === 1 ? "session" : "sessions"}.
-        </div>
-      </section>
+      <UserSessions userId={user.id} userName={user.name} isOwnProfile={isOwnProfile} />
 
       <Dialog
         open={confirming}
