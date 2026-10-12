@@ -8,7 +8,7 @@ Update this file after every meaningful implementation change.
 
 - API: deployed on Render. Auth, rides, vehicles and bookings endpoints exist; booking concurrency verified against a test database (2026-10-08); the CHECK migration is applied to the test branch and to production (2026-10-09). Roles, admin user/session endpoints and cookie refresh are implemented and verified on the test branch (2026-10-09), not yet deployed or migrated in production.
 - Mobile: auth screens only (splash, onboarding, login, signup, placeholder Home).
-- Web: client-side foundation built (proxy, API client, auth, login, guarded /admin, users-count placeholder), 39 Vitest tests passing; the live check against the production API is pending (see Done, not verified).
+- Web: client-side foundation built and verified live against the production API (2026-10-12): proxy, API client, auth, login, guarded /admin, users-count placeholder; 39 Vitest tests. Next: the real users table.
 
 ## Done (verified)
 
@@ -40,6 +40,14 @@ Update this file after every meaningful implementation change.
   - `test/load-test-env.ts` (run before every e2e spec) refuses to run if `.env.test`'s `DATABASE_URL` or `DIRECT_URL` has the same host as main (from `apps/api/.env` and/or `MAIN_DB_HOST`, `-pooler` ignored), and also if it cannot tell which host is main (no `.env` and no `MAIN_DB_HOST`). Checked against fake env files for 8 combinations.
   - The e2e jest config now transforms ESM-only `jose` so the real `AuthModule` loads in tests (`test/jest-e2e.json`).
   - Run: `npx jest --config ./test/jest-e2e.json test/bookings.concurrency.e2e-spec.ts test/admin.e2e-spec.ts test/auth-cookie.e2e-spec.ts` in `apps/api`: 3 suites, 30 tests passed on 2026-10-09.
+- **Web foundation** (`apps/web`, 2026-10-11; unit-tested, and checked live against the production API on 2026-10-12):
+  - `next.config.ts` rewrites `/api/:path*` to `${API_ORIGIN}/:path*` (`.env.local`, template in `.env.example`; 60 s proxy timeout for Render cold starts). The browser only calls `/api/...`, so the refresh cookie (`Path=/api/auth`, `REFRESH_COOKIE_PATH` on Render) is same-origin and no CORS is involved.
+  - `lib/api`: typed fetch client, access token in memory only, `ApiError { status, code, message }`, zod schemas (login, `/auth/me`, `/admin/users`). Requests send `X-Client: web`, so the API returns the refresh token only in the httpOnly cookie and the schemas never expect it.
+  - `lib/auth`: `AuthProvider`/`useAuth()` (`loading | authenticated | anonymous`), session restore on load (cookie refresh then `/auth/me`), logout, TanStack Query provider.
+  - Routes: `/login` (labelled form, aria-live error, disabled while pending, safe `?next`), `/admin` guard (skeleton / redirect to `/login?next=` / in-page 403 for non-admins, no redirect loop), header with email + Log out, `/admin/users` placeholder showing the total from `GET /api/admin/users`, `/` redirects to `/admin`.
+  - Tests (`npm test` in `apps/web`, Vitest + Testing Library): 3 parallel 401s -> exactly 1 refresh and 3 retries; refresh 401 -> anonymous; network error / 5xx on refresh do not log out; React StrictMode sends one refresh; network retry with the "Connection problem, retrying…" notice; non-ADMIN sees the 403 page; login form behaviour; `safeNextPath`. Negative controls: without the shared refresh promise the parallel-401 test sees 3 refreshes and the StrictMode test sees 2.
+  - Fixed on the way: `globals.css` used Tailwind 3 directives under Tailwind 4 (utilities were generated but the base reset was missing).
+  - **Live check (2026-10-12, manual, `npm run dev` on `localhost:3000` against production via the proxy; the admin entered their own password).** All 7 steps passed: `/` and `/admin` sent a logged-out visitor to `/login?next=…`; login landed on `/admin/users` showing the total and the header with email + Log out; the `refresh_token` cookie was HttpOnly, Secure, SameSite=Lax, `Path=/api/auth`, with the login response body free of `refresh_token` and nothing in Local/Session storage; a reload stayed logged in with exactly one `POST /api/auth/refresh` followed by `GET /api/auth/me`; Log out cleared the cookie and a reload stayed on `/login`; opening `/admin/users` while logged out redirected to `/login?next=%2Fadmin%2Fusers` and returned there after login. Before the login step, curl through the proxy confirmed `/api/health` 200, `/api/auth/refresh` without a cookie 401 `INVALID_REFRESH_TOKEN`, a wrong password 401, and `/api/admin/users` without a token 401.
 - **Passing specs without `DATABASE_URL`:** 3 suites, 16 tests (tokens, Vipps auth service, app controller).
 
 ## Done (not verified)
@@ -50,13 +58,6 @@ Update this file after every meaningful implementation change.
 - **Vipps Login.** Code kept but dormant: backend `src/auth/vipps/*` (fails closed with no `VIPPS_*` env), mobile `src/auth/vippsLogin.ts` (not imported by any screen). Callback/exchange logic has unit tests, but it has never run against real credentials; those need a Norwegian organisation number.
 - **Payment is mocked.** `paymentStatus` is `MOCK_UNPAID` (default) / `MOCK_PAID`; no code writes it.
 - **Mobile auth.** Login and Signup screens, `AuthContext`, SecureStore token storage, API client with 401 -> single refresh -> one retry, placeholder Home. No logged run on a device or emulator.
-- **Web foundation** (`apps/web`, 2026-10-11; unit-tested, **not yet checked live**: steps below):
-  - `next.config.ts` rewrites `/api/:path*` to `${API_ORIGIN}/:path*` (`.env.local`, template in `.env.example`; 60 s proxy timeout for Render cold starts). The browser only calls `/api/...`, so the refresh cookie (`Path=/api/auth`, `REFRESH_COOKIE_PATH` on Render) is same-origin and no CORS is involved.
-  - `lib/api`: typed fetch client, access token in memory only, `ApiError { status, code, message }`, zod schemas (login, `/auth/me`, `/admin/users`). Requests send `X-Client: web`, so the API returns the refresh token only in the httpOnly cookie and the schemas never expect it.
-  - `lib/auth`: `AuthProvider`/`useAuth()` (`loading | authenticated | anonymous`), session restore on load (cookie refresh then `/auth/me`), logout, TanStack Query provider.
-  - Routes: `/login` (labelled form, aria-live error, disabled while pending, safe `?next`), `/admin` guard (skeleton / redirect to `/login?next=` / in-page 403 for non-admins, no redirect loop), header with email + Log out, `/admin/users` placeholder showing the total from `GET /api/admin/users`, `/` redirects to `/admin`.
-  - Tests (`npm test` in `apps/web`, Vitest + Testing Library): 3 parallel 401s -> exactly 1 refresh and 3 retries; refresh 401 -> anonymous; network error / 5xx on refresh do not log out; React StrictMode sends one refresh; network retry with the "Connection problem, retrying…" notice; non-ADMIN sees the 403 page; login form behaviour; `safeNextPath`. Negative controls: without the shared refresh promise the parallel-401 test sees 3 refreshes and the StrictMode test sees 2.
-  - Fixed on the way: `globals.css` used Tailwind 3 directives under Tailwind 4 (utilities were generated but the base reset was missing).
 
 ## Next Up
 
