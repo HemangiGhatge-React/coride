@@ -22,6 +22,7 @@ export const fakeNavigation = {
     index = 0;
     this.pushed.length = 0;
     this.replaced.length = 0;
+    this.params = {};
     notify();
   },
   get url() {
@@ -52,6 +53,8 @@ export const fakeNavigation = {
     if (index < entries.length - 1) index++;
     notify();
   },
+  /** Route params returned by useParams, e.g. { id: "…" }. Set it in the test. */
+  params: {} as Record<string, string>,
   pushed: [] as string[],
   replaced: [] as string[],
 };
@@ -72,6 +75,7 @@ export const navigationModule = {
       }),
       [],
     ),
+  useParams: () => fakeNavigation.params,
   usePathname: () => new URL(useUrl(), BASE).pathname,
   useSearchParams: () => {
     const url = useUrl();
