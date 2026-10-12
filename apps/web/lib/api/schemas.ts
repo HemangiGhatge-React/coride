@@ -36,6 +36,10 @@ export const adminUserSchema = userSchema.extend({
 });
 export type AdminUser = z.infer<typeof adminUserSchema>;
 
+/** PATCH /admin/users/:id/role returns the updated user (without the session count). */
+export const updatedUserSchema = adminUserSchema.omit({ activeSessionCount: true });
+export type UpdatedUser = z.infer<typeof updatedUserSchema>;
+
 export const adminUsersListSchema = z.object({
   items: z.array(adminUserSchema),
   total: z.number().int(),

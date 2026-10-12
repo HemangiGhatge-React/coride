@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient } from "./client";
-import { getMe, listAdminUsers, login } from "./endpoints";
+import { getAdminUser, getMe, listAdminUsers, login, updateUserRole } from "./endpoints";
 import { ApiError, NETWORK_ERROR } from "./errors";
 import { fakeFetch, json } from "./test-utils";
 
@@ -200,5 +200,30 @@ describe("api client: requests and errors", () => {
     const client = createApiClient({ fetch: fakeFetch(() => json({ nope: true })).fn });
     client.setAccessToken("t");
     await expect(getMe(client)).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+});
+
+describe("admin user endpoints", () => {
+  const detail = { ...user, createdAt: "2026-10-01T00:00:00.000Z", activeSessionCount: 2 };
+
+  it("getAdminUser requests /admin/users/:id and validates the response", async () => {
+    const f = fakeFetch(() => json(detail));
+    const client = createApiClient({ fetch: f.fn });
+    client.setAccessToken("t");
+    await expect(getAdminUser(client, "u 1/x")).resolves.toEqual(detail);
+    expect(f.calls[0].url).toBe("/api/admin/users/u%201%2Fx"); // the id is encoded, never path-injected
+  });
+
+  it("updateUserRole sends PATCH { role } and parses the updated user", async () => {
+    const f = fakeFetch(() => json({ ...user, role: "DRIVER", createdAt: detail.createdAt }));
+    const client = createApiClient({ fetch: f.fn });
+    client.setAccessToken("t");
+    const updated = await updateUserRole(client, "u1", "DRIVER");
+
+    expect(updated.role).toBe("DRIVER");
+    const { url, init } = f.calls[0];
+    expect(url).toBe("/api/admin/users/u1/role");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body as string)).toEqual({ role: "DRIVER" });
   });
 });

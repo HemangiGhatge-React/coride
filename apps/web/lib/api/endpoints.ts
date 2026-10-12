@@ -1,5 +1,12 @@
 import type { ApiClient } from "./client";
-import { adminUsersListSchema, loginResponseSchema, meResponseSchema, type Role } from "./schemas";
+import {
+  adminUserSchema,
+  adminUsersListSchema,
+  loginResponseSchema,
+  meResponseSchema,
+  updatedUserSchema,
+  type Role,
+} from "./schemas";
 
 // Thin typed wrappers over the client for the endpoints the web app uses.
 
@@ -36,4 +43,16 @@ export interface ListAdminUsersParams {
 
 export function listAdminUsers(client: ApiClient, params: ListAdminUsersParams = {}) {
   return client.request("/admin/users", { query: { ...params }, schema: adminUsersListSchema });
+}
+
+export function getAdminUser(client: ApiClient, id: string) {
+  return client.request(`/admin/users/${encodeURIComponent(id)}`, { schema: adminUserSchema });
+}
+
+export function updateUserRole(client: ApiClient, id: string, role: Role) {
+  return client.request(`/admin/users/${encodeURIComponent(id)}/role`, {
+    method: "PATCH",
+    body: { role },
+    schema: updatedUserSchema,
+  });
 }
