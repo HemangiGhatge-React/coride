@@ -25,5 +25,6 @@
   },
   "transformIgnorePatterns": ["/node_modules/(?!jose/)"],
   "setupFiles": ["<rootDir>/load-test-env.ts"],
+  "maxWorkers": 1,
   "testTimeout": 60000
 }

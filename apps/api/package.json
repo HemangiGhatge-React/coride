@@ -21,7 +21,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "user:promote": "ts-node scripts/promote-admin.ts"
+    "user:promote": "ts-node scripts/promote-admin.ts",
+    "seed:demo": "ts-node scripts/seed-demo.ts",
+    "seed:demo:remove": "ts-node scripts/seed-demo.ts remove"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
