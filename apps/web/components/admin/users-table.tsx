@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableCaption, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { api, describeApiError, listAdminUsers, type AdminUser } from "@/lib/api";
-import { formatDate } from "@/lib/format";
+import { formatDate, pluralize } from "@/lib/format";
 import {
   PAGE_SIZE,
   hasActiveFilters,
@@ -125,7 +125,9 @@ export function UsersTable() {
     if (data.total === 0) return filtersActive ? "No users match your filters." : "No users yet.";
     const from = (data.page - 1) * PAGE_SIZE + 1;
     const to = Math.min(data.page * PAGE_SIZE, data.total);
-    return `Showing ${from}–${to} of ${data.total} users`;
+    if (data.total === 1) return `Showing ${pluralize(1, "user")}`;
+    // A one-row last page reads "Showing 21 of 21 users", not "21–21".
+    return `Showing ${from === to ? from : `${from}–${to}`} of ${pluralize(data.total, "user")}`;
   })();
 
   return (

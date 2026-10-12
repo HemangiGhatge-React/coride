@@ -239,6 +239,27 @@ describe("UsersTable: URL drives the query", () => {
   });
 });
 
+describe("UsersTable: result count wording", () => {
+  const some = (n: number) => ({ items: everyone.slice(0, n), total: n, page: 1, pageSize: 10 });
+
+  it.each([
+    [1, "Showing 1 user"],
+    [2, "Showing 1–2 of 2 users"],
+    [10, "Showing 1–10 of 10 users"],
+  ])("with %i total: %s", async (total, text) => {
+    list.mockResolvedValue(some(total));
+    renderTable();
+    expect(await screen.findByText(text)).toHaveAttribute("role", "status");
+  });
+
+  it("a last page with a single row reads 'Showing 21 of 21 users'", async () => {
+    fakeNavigation.reset("/admin/users?page=3");
+    list.mockResolvedValue({ items: [everyone[20]], total: 21, page: 3, pageSize: 10 });
+    renderTable();
+    expect(await screen.findByText("Showing 21 of 21 users")).toBeInTheDocument();
+  });
+});
+
 describe("UsersTable: states", () => {
   it("shows skeleton rows while the first page loads, with no table yet", async () => {
     list.mockImplementation(() => new Promise(() => {})); // never resolves
