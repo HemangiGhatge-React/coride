@@ -49,6 +49,7 @@ describe('admin endpoints', () => {
       // Lazy, so each request is created right before it is sent.
       const calls = [
         () => http().get('/admin/users'),
+        () => http().get(`/admin/users/${id}`),
         () => http().patch(`/admin/users/${id}/role`).send({ role: 'ADMIN' }),
         () => http().get(`/admin/users/${id}/sessions`),
         () => http().post(`/admin/users/${id}/revoke-all`),
@@ -118,6 +119,48 @@ describe('admin endpoints', () => {
       expect((await http().get('/admin/users').query({ pageSize: 1000 }).set(auth)).status).toBe(400);
       expect((await http().get('/admin/users').query({ role: 'KING' }).set(auth)).status).toBe(400);
       expect((await http().get('/admin/users').query({ page: 0 }).set(auth)).status).toBe(400);
+    });
+  });
+
+  describe('GET /admin/users/:id', () => {
+    it('returns the same fields as a list row, with the live session count, and no secrets', async () => {
+      const a = await admin('reader');
+      const u = await createUser(prisma, PREFIX, 'detail');
+      const before = await http().get(`/admin/users/${u.id}`).set(bearer(a.accessToken));
+      expect(before.status).toBe(200);
+      expect(before.body).toMatchObject({ id: u.id, email: u.email, name: 'detail', role: 'DRIVER', activeSessionCount: 0 });
+      expect(Object.keys(before.body).sort()).toEqual(['activeSessionCount', 'createdAt', 'email', 'id', 'name', 'role']);
+      expect(JSON.stringify(before.body)).not.toMatch(/password|\$2[aby]\$/i);
+
+      await login(app, u.email);
+      await login(app, u.email);
+      const after = await http().get(`/admin/users/${u.id}`).set(bearer(a.accessToken));
+      expect(after.body.activeSessionCount).toBe(2);
+
+      // The list and the detail agree.
+      const list = await http().get('/admin/users').query({ search: u.email }).set(bearer(a.accessToken));
+      expect(list.body.items).toEqual([after.body]);
+    });
+
+    it('does not count revoked sessions', async () => {
+      const a = await admin('revoked-reader');
+      const u = await createUser(prisma, PREFIX, 'revoked');
+      await login(app, u.email);
+      await http().post(`/admin/users/${u.id}/revoke-all`).set(bearer(a.accessToken)).expect(204);
+      const res = await http().get(`/admin/users/${u.id}`).set(bearer(a.accessToken));
+      expect(res.body.activeSessionCount).toBe(0);
+    });
+
+    it('404 USER_NOT_FOUND for an unknown id, 400 for a malformed one', async () => {
+      const a = await admin('lookup');
+      const missing = await http().get(`/admin/users/${randomUUID()}`).set(bearer(a.accessToken));
+      expect(missing.status).toBe(404);
+      expect(missing.body).toMatchObject({ statusCode: 404, code: 'USER_NOT_FOUND' });
+      expect((await http().get('/admin/users/not-a-uuid').set(bearer(a.accessToken))).status).toBe(400);
+    });
+
+    it('401 without a token', async () => {
+      expect((await http().get(`/admin/users/${randomUUID()}`)).status).toBe(401);
     });
   });
 

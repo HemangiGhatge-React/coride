@@ -34,13 +34,7 @@ export class AdminService {
       }),
     ]);
 
-    // A session is a token family with a live (unrevoked, unexpired) token.
-    const live = await this.prisma.refreshToken.groupBy({
-      by: ['userId', 'familyId'],
-      where: { userId: { in: users.map((u) => u.id) }, revokedAt: null, expiresAt: { gt: new Date() } },
-    });
-    const sessionsByUser = new Map<string, number>();
-    for (const row of live) sessionsByUser.set(row.userId, (sessionsByUser.get(row.userId) ?? 0) + 1);
+    const sessionsByUser = await this.activeSessionCounts(users.map((u) => u.id));
 
     return {
       items: users.map((u) => ({ ...u, activeSessionCount: sessionsByUser.get(u.id) ?? 0 })),
@@ -48,6 +42,24 @@ export class AdminService {
       page,
       pageSize,
     };
+  }
+
+  async getUser(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: USER_SELECT });
+    if (!user) throw apiError(NotFoundException, 'USER_NOT_FOUND', 'User not found');
+    const sessionsByUser = await this.activeSessionCounts([id]);
+    return { ...user, activeSessionCount: sessionsByUser.get(id) ?? 0 };
+  }
+
+  /** A session is a token family with a live (unrevoked, unexpired) token. */
+  private async activeSessionCounts(userIds: string[]) {
+    const live = await this.prisma.refreshToken.groupBy({
+      by: ['userId', 'familyId'],
+      where: { userId: { in: userIds }, revokedAt: null, expiresAt: { gt: new Date() } },
+    });
+    const counts = new Map<string, number>();
+    for (const row of live) counts.set(row.userId, (counts.get(row.userId) ?? 0) + 1);
+    return counts;
   }
 
   async updateRole(actorId: string, targetId: string, role: Role) {

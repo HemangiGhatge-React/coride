@@ -36,6 +36,11 @@ export class AdminController {
     return this.admin.listUsers(query);
   }
 
+  @Get('users/:id')
+  getUser(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.getUser(id);
+  }
+
   @Patch('users/:id/role')
   updateRole(
     @Req() req: { user: { userId: string } },
