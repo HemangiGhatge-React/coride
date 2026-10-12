@@ -14,6 +14,7 @@ export function AdminHeader() {
       <div className="flex items-center gap-3 text-sm">
         {user && <span aria-label="Signed in as">{user.email}</span>}
         <Button
+          variant="secondary"
           type="button"
           disabled={pending}
           onClick={async () => {
